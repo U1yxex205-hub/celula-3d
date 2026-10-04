@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Modelo 3D interactivo de una célula animal con fichas de estudio de sus organelos.">
+<title>Célula 3D de estudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: mesa de microscopio — visor 3D a la izquierda, ficha y modos a la derecha; en teléfono se apilan. */
+:root{
+  --bg:#eef1ee; --panel:#fbfcfb; --ink:#17201b; --muted:#5a665f; --line:#d3dbd5;
+  --accent:#1f7a5a; --accent-soft:#d8ece3; --stage:#dfe5e0; --warn:#9a5b13; --bad:#b0362c;
+  --label-bg:rgba(251,252,251,.92);
+  --f-display:"Fraunces",Georgia,serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1512; --panel:#151d19; --ink:#e4ece7; --muted:#97a69d; --line:#2a3630;
+  --accent:#5cc79c; --accent-soft:#1d3a2e; --stage:#0b100d; --warn:#e2a35a; --bad:#ff8a7a; --label-bg:rgba(21,29,25,.9); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --panel:#151d19; --ink:#e4ece7; --muted:#97a69d; --line:#2a3630;
+  --accent:#5cc79c; --accent-soft:#1d3a2e; --stage:#0b100d; --warn:#e2a35a; --bad:#ff8a7a; --label-bg:rgba(21,29,25,.9); color-scheme:dark}
+[hidden]{display:none!important}
+body{margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);padding-inline:16px;padding-block:16px;box-sizing:border-box}
+.wrap{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;max-width:1320px;margin:0 auto;height:100%;min-height:600px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;height:auto}}
+.stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:460px}
+@media (max-width:900px){.stage{height:68vh}}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+svg.labels{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+svg.labels line{stroke:var(--ink);stroke-width:1;opacity:.55}
+svg.labels circle{fill:var(--ink)}
+.lbl{position:absolute;transform:translate(-50%,-50%);font:500 11.5px/1.2 var(--f-body);background:var(--label-bg);border:1px solid var(--line);padding:3px 7px;border-radius:5px;white-space:nowrap;pointer-events:auto;cursor:pointer;color:var(--ink)}
+.lbls{position:absolute;inset:0;pointer-events:none}
+.hud{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;pointer-events:none;z-index:3}
+.hud>*{pointer-events:auto}
+.tag{font:500 12px/1 var(--f-mono);letter-spacing:.04em;text-transform:uppercase;background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:7px 10px;border-radius:6px;align-self:flex-start}
+.toggles{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.toggles label{display:flex;align-items:center;gap:6px;font:500 12px/1 var(--f-body);background:var(--panel);border:1px solid var(--line);padding:6px 9px;border-radius:6px;cursor:pointer}
+.sliders{position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:10px;flex-wrap:wrap;z-index:3}
+.sl{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);padding:6px 10px;border-radius:6px;font:500 12px var(--f-body);flex:1 1 200px;min-width:0}
+.sl span{font:500 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);width:62px;flex:none}
+.sl input{flex:1;min-width:0;accent-color:var(--accent)}
+.status{position:absolute;inset:0;display:grid;place-items:center;font:500 13px var(--f-mono);color:var(--muted)}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:600 13px var(--f-body);padding:12px 8px;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.card{padding:18px 22px;border-bottom:1px solid var(--line);overflow:auto;flex:1 1 auto;min-height:0}
+.eyebrow{font:500 11.5px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font:650 26px/1.15 var(--f-display);margin:6px 0 4px;text-wrap:balance}
+.node{font:12px var(--f-mono);color:var(--muted)}
+.card p{margin:12px 0 0;max-width:62ch}
+.card ul,.card ol{margin:12px 0 0;padding-left:20px;display:grid;gap:7px}
+.src{display:inline-block;font:600 10.5px var(--f-mono);padding:1px 5px;border-radius:4px;margin-right:6px;vertical-align:1px;border:1px solid currentColor}
+.src.f{color:var(--accent)} .src.c{color:var(--warn)}
+.legend{font-size:12px;color:var(--muted);margin-top:14px}
+.list{padding:10px 14px 14px;overflow:auto;flex:0 1 auto;max-height:48%}
+@media (max-width:900px){.list{max-height:none}}
+.group h2{font:500 11.5px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 4px 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip,.btn{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 13px var(--f-body);padding:6px 10px;border-radius:999px;cursor:pointer}
+.chip:hover,.btn:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.2)}
+.chip.sm{border-style:dashed}
+.refs{font-size:12.5px;gap:4px!important;color:var(--muted)}
+.refs a{color:var(--accent)}
+details{margin-top:12px;font-size:13px}summary{cursor:pointer;color:var(--accent);font-weight:600}
+.card h3{font:600 12px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:16px 0 0}
+.analog{background:var(--accent-soft);padding:8px 12px;border-radius:6px}
+.dato{font-size:14px}
+.new{font:600 10px var(--f-mono);color:var(--accent);letter-spacing:.05em}
+.steps li.on{font-weight:600;color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.score{font:600 32px var(--f-display);font-variant-numeric:tabular-nums}
+.ok{color:var(--accent);font-weight:600}.no{color:var(--bad);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <section class="stage" id="stage">
+    <canvas id="c" aria-label="Modelo 3D de una célula animal"></canvas>
+    <svg class="labels" id="lines"></svg><div class="lbls" id="lbls"></div>
+    <div class="status" id="status">Cargando modelo…</div>
+    <div class="hud">
+      <span class="tag" id="sel-tag">Toca un organelo</span>
+      <div class="toggles">
+        <label><input type="checkbox" id="t-lbl"> Etiquetas</label>
+        <label><input type="checkbox" id="t-mem"> Membrana</label>
+        <label><input type="checkbox" id="t-cyt" checked> Citosol</label>
+        <label><input type="checkbox" id="t-ske" checked> Citoesqueleto</label>
+        <label><input type="checkbox" id="t-rot"> Girar</label>
+      </div>
+    </div>
+    <div class="sliders">
+      <label class="sl"><span>Corte</span><input type="range" id="s-cut" min="0" max="100" value="0" aria-label="Profundidad del plano de corte"></label>
+      <label class="sl"><span>Separar</span><input type="range" id="s-exp" min="0" max="100" value="0" aria-label="Separar organelos"></label>
+    </div>
+  </section>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-explorar" aria-selected="true">Explorar</button>
+      <button role="tab" id="tab-procesos" aria-selected="false">Procesos</button>
+      <button role="tab" id="tab-examen" aria-selected="false">Examen</button>
+    </div>
+    <div class="card" id="card" aria-live="polite"></div>
+    <div class="list" id="list"></div>
+  </aside>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+const F='f', C='c';
+const T1='1 · Retículo endoplásmico',T2='2 · Golgi y citoesqueleto',T3='3 · Lisosomas y peroxisomas',T4='4 · Núcleo y mitocondria',TO='Otros';
+// Order matters: the first pattern that matches a mesh name wins.
+const ORG = [
+ {id:'rer',tema:T1,nombre:'RE rugoso',color:'#5f4b9b',grp:'rer',match:/^(Reticulo_endoplasmatico_rugoso|Ribosomas_\d|RE_rugoso_union)/,nodo:'Reticulo_endoplasmatico_rugoso · Ribosomas_1–3 · RE_rugoso_union_envoltura',
+  resumen:'Cisternas cubiertas de ribosomas. Los túbulos nuevos lo unen a la membrana externa del núcleo: es una sola red.',
+  puntos:[[F,'La SRP reconoce la secuencia señal y la cadena entra al lumen mientras se sintetiza.'],[F,'BiP, calnexina y PDI pliegan; lo mal plegado sale al proteasoma.'],[F,'La oligosacaril transferasa inicia la N-glicosilación.'],[C,'Si se acumulan proteínas mal plegadas se activa la UPR (estrés del RE).']]},
+ {id:'rel',tema:T1,nombre:'RE liso',color:'#8c3a85',grp:'rel',match:/^(Reticulo_endoplasmatico_liso|RE_liso_union)/,nodo:'Reticulo_endoplasmatico_liso · RE_liso_union_rugoso',
+  resumen:'Túbulos sin ribosomas, continuos con el RE rugoso. Lípidos, esteroides, desintoxicación y calcio.',
+  puntos:[[F,'HMG-CoA reductasa y otras enzimas del RE hacen colesterol y hormonas esteroideas.'],[F,'El citocromo P450 modifica fármacos y toxinas lipofílicas.'],[F,'El IP3 libera el Ca²⁺ guardado en las cisternas.'],[C,'Abundante en el hígado y en células que fabrican hormonas esteroideas.']]},
+ {id:'ribo',tema:T1,nombre:'Ribosomas libres y polisomas',color:'#d23a52',grp:'ribo',match:/^(Ribosomas_libres|Polisomas|ARNm)/,nodo:'Ribosomas_libres · Polisomas · ARNm',nuevo:'agregados',
+  resumen:'Ribosomas sueltos en el citosol, solos o en fila sobre un ARNm (polisoma).',
+  puntos:[[C,'Hacen, entre otras, las proteínas del citosol y las de los peroxisomas.'],[C,'Los del RE rugoso hacen proteínas de membrana y de secreción: el destino lo decide la secuencia señal.']]},
+ {id:'golgi',tema:T2,nombre:'Aparato de Golgi',color:'#7a63d6',grp:'golgi',match:/^(Aparato_de_Golgi|Red_trans_Golgi)/,nodo:'Aparato_de_Golgi · Red_trans_Golgi_yemas',nuevo:'colores cis→trans',
+  resumen:'Azul = cara cis (recibe del RE) · violeta = medial · rojo = cara trans y red trans-Golgi (despacha).',
+  puntos:[[F,'Recorta y completa oligosacáridos; une lípidos a proteínas.'],[F,'La giantina y GM130 anclan las vesículas que llegan del RE.'],[F,'La TGN envía a membrana plasmática, endosomas y lisosomas.'],[C,'Polaridad cis/medial/trans y marcaje con manosa-6-fosfato.']]},
+ {id:'copii',tema:T2,nombre:'Vesículas COPII',color:'#73ccf5',grp:'copii',match:/^Vesiculas_COPII/,nodo:'Vesiculas_COPII',nuevo:'agregadas',
+  resumen:'Celeste: del RE a la cara cis del Golgi (transporte anterógrado).',puntos:[[F,'Llevan las proteínas recién plegadas del RE al Golgi.']]},
+ {id:'copi',tema:T2,nombre:'Vesículas COPI',color:'#dbd64d',grp:'copi',match:/^Vesiculas_COPI$/,nodo:'Vesiculas_COPI',nuevo:'agregadas',
+  resumen:'Amarillo pálido: regresan del Golgi al RE (transporte retrógrado).',puntos:[[F,'COPI opera junto con COPII en el RE y el Golgi.'],[C,'Devuelven proteínas residentes del RE (señal KDEL).']]},
+ {id:'clat',tema:T2,nombre:'Vesículas de clatrina',color:'#e6e6ea',grp:'clat',match:/^(Vesiculas_clatrina|Cubierta_clatrina)/,nodo:'Vesiculas_clatrina · Cubierta_clatrina',nuevo:'agregadas',
+  resumen:'La jaula blanca es la cubierta de clatrina; salen de la red trans-Golgi hacia endosomas y lisosomas.',
+  puntos:[[F,'La clatrina forma una jaula geodésica que da la fuerza para que brote la vesícula.'],[F,'Al separarse, la cubierta se desensambla.']]},
+ {id:'ves',tema:T2,nombre:'Vesículas secretoras',color:'#e0c22c',grp:'ves',match:/^Vesiculas_de_transporte/,nodo:'Vesiculas_de_transporte',
+  resumen:'Vesículas grandes que llevan producto hacia la membrana para la exocitosis.',puntos:[[C,'Se fusionan con la membrana plasmática y liberan su contenido.']]},
+ {id:'mt',tema:T2,nombre:'Microtúbulos',color:'#5cc76b',grp:'mt',match:/^Microtubulos/,nodo:'Microtubulos',nuevo:'agregados',
+  resumen:'Tubos verdes que salen del centrosoma hacia la periferia. Son las vías del transporte.',
+  puntos:[[F,'Tubulina α/β, 13 protofilamentos, 25 nm.'],[F,'Cinesinas y dineínas caminan sobre ellos; forman el huso mitótico.'],[F,'La colchicina impide su polimerización.'],[C,'Los taxanos los estabilizan y frenan la mitosis.']]},
+ {id:'act',tema:T2,nombre:'Microfilamentos de actina',color:'#e05238',grp:'act',match:/^Microfilamentos_actina/,nodo:'Microfilamentos_actina',nuevo:'agregados',
+  resumen:'Red roja bajo la membrana: la corteza de actina.',
+  puntos:[[F,'Actina G → F, doble hélice de 5–7 nm.'],[F,'Empuja pseudópodos, forma el anillo contráctil y ancla uniones adherentes.'],[F,'Las miosinas se mueven sobre ella.']]},
+ {id:'fi',tema:T2,nombre:'Filamentos intermedios',color:'#409eb3',grp:'fi',match:/^Filamentos_intermedios/,nodo:'Filamentos_intermedios',
+  resumen:'Red turquesa que da resistencia mecánica a toda la célula.',puntos:[[F,'Los más estables: queratinas en epitelios, láminas en el núcleo.'],[C,'De 8 a 10 nm de diámetro.']]},
+ {id:'cent',tema:T2,nombre:'Centríolos',color:'#c9a514',grp:'cent',match:/^Centriolos/,nodo:'Centriolos',
+  resumen:'Par de cilindros de 9 tripletes de microtúbulos. De aquí nacen los microtúbulos verdes.',
+  puntos:[[F,'Organizan el huso mitótico.'],[F,'El axonema 9+2 de cilios y flagelos se dobla por la dineína.']]},
+ {id:'aut',tema:T3,nombre:'Autofagosoma',color:'#9b7ad0',grp:'aut',match:/^(Autofagosoma|Lisosoma_fusionandose)/,nodo:'Autofagosoma · Lisosoma_fusionandose',nuevo:'agregado',
+  resumen:'Doble membrana que envuelve una mitocondria vieja; un lisosoma se fusiona con ella para digerirla.',
+  puntos:[[F,'La autofagia recicla componentes propios junto con el lisosoma.'],[C,'El autofagosoma se fusiona con el lisosoma, que digiere su contenido.']]},
+ {id:'fag',tema:T3,nombre:'Fagosoma',color:'#cc8ca6',grp:'fag',match:/^(Fagosoma|Bacteria_fagocitada|Lisosoma_hacia_fagosoma)/,nodo:'Fagosoma_membrana · Bacteria_fagocitada · Lisosoma_hacia_fagosoma',nuevo:'agregado',
+  resumen:'Bacteria ya internalizada; un lisosoma se acerca para fusionarse y digerirla.',
+  puntos:[[F,'La fagocitosis internaliza partículas grandes por endomembranas.'],[C,'Así matan bacterias los macrófagos y neutrófilos.']]},
+ {id:'lis',tema:T3,nombre:'Lisosomas',color:'#5c38b8',grp:'lis',match:/^Lisosomas/,nodo:'Lisosomas · Lisosomas_hidrolasas',nuevo:'rehechos',
+  resumen:'Esferas de una membrana con gránulos de hidrolasas dentro.',
+  puntos:[[F,'Digestión intracelular; si se rompen, inflaman el tejido.'],[C,'pH cercano a 5, mantenido por una bomba de protones; sus enzimas llegan marcadas con manosa-6-fosfato.'],[C,'Depósito lisosomal: Gaucher, Tay-Sachs.']]},
+ {id:'perox',tema:T3,nombre:'Peroxisomas',color:'#7cc04f',grp:'perox',match:/^Peroxisoma/,nodo:'Peroxisoma_1–4',
+  resumen:'Una membrana y núcleo cristaloide. Producen y destruyen H₂O₂.',
+  puntos:[[F,'La catalasa degrada el H₂O₂.'],[F,'Perdieron su DNA (De Duve).'],[C,'Beta-oxidación de cadena muy larga, plasmalógenos; Zellweger.']]},
+ {id:'env',tema:T4,nombre:'Envoltura nuclear y poros',color:'#7d3fc0',grp:'nuc',match:/^(Envoltura_nuclear|Poros_nucleares|Membrana_nuclear_interna)/,nodo:'Envoltura_nuclear · Membrana_nuclear_interna · Poros_nucleares',nuevo:'doble membrana',
+  resumen:'Dos membranas con el espacio perinuclear entre ellas; la externa sigue en el RE. Los poros las atraviesan.',
+  puntos:[[F,'Los poros regulan el tráfico en ambos sentidos con importinas.'],[F,'Su andamiaje se parece a COPI/COPII.']]},
+ {id:'lam',tema:T4,nombre:'Lámina nuclear',color:'#33ccdb',grp:'nuc',match:/^Lamina_nuclear/,nodo:'Lamina_nuclear',nuevo:'agregada',
+  resumen:'Malla turquesa de láminas pegada por dentro a la membrana interna.',
+  puntos:[[F,'Sostiene la envoltura y ancla cromatina (láminas tipo A).'],[C,'Mutaciones en LMNA causan laminopatías como la progeria.']]},
+ {id:'het',tema:T4,nombre:'Heterocromatina',color:'#141a6b',grp:'nuc',match:/^Heterocromatina/,nodo:'Heterocromatina',nuevo:'agregada',
+  resumen:'Grumos oscuros en la periferia y alrededor del nucléolo: cromatina condensada e inactiva.',puntos:[[F,'Las láminas A se unen a la heterocromatina.'],[F,'Está condensada y casi no se transcribe.']]},
+ {id:'eu',tema:T4,nombre:'Eucromatina y nucleoplasma',color:'#6185fa',grp:'nuc',match:/^(Eucromatina|Nucleoplasma)/,nodo:'Eucromatina_1–4 · Nucleoplasma',
+  resumen:'Cromatina laxa y activa, en el centro del núcleo.',
+  puntos:[[F,'DNA en nucleosomas; RNA polimerasa a ~30 nt/s; caperuza, poli-A y splicing.'],[F,'Replicación en la fase S.']]},
+ {id:'nucleolo',tema:T4,nombre:'Nucléolo',color:'#8a1680',grp:'nuc',match:/^Nucleolo/,nodo:'Nucleolo',
+  resumen:'Donde se transcribe el RNA ribosomal y se ensamblan los ribosomas.',puntos:[[F,'Sin membrana propia.']]},
+ {id:'mmem',tema:T4,nombre:'Mitocondria: membranas',color:'#ee8533',grp:'mitoc',match:/^(Mito_membrana_externa|Mito_membrana_interna|Mito_ATP)/,nodo:'Mito_membrana_externa · Mito_membrana_interna · Mito_ATP_sintasa',nuevo:'mitocondria en corte',
+  resumen:'Externa (naranja, con porinas) e interna (más clara, con ATP sintasas cafés). Entre ellas, el espacio intermembrana.',
+  puntos:[[F,'La cadena respiratoria bombea H⁺ al espacio intermembrana.'],[F,'Los H⁺ regresan por la ATP sintasa, que forma ATP.'],[F,'Libera citocromo c → apoptosoma → caspasas 9 y 3.']]},
+ {id:'mcr',tema:T4,nombre:'Mitocondria: crestas',color:'#fac75c',grp:'mitoc',match:/^Mito_crestas/,nodo:'Mito_crestas',nuevo:'mitocondria en corte',
+  resumen:'Pliegues de la membrana interna que aumentan la superficie para producir ATP.',puntos:[[F,'Membrana interna hasta 75 % proteína.']]},
+ {id:'mmat',tema:T4,nombre:'Mitocondria: matriz y mtDNA',color:'#ffeb9e',grp:'mitoc',match:/^(Mito_matriz|Mito_DNA|Mito_ribosomas)/,nodo:'Mito_matriz · Mito_DNA_circular · Mito_ribosomas',nuevo:'mitocondria en corte',
+  resumen:'Ciclo de Krebs, DNA circular (anillo magenta) y ribosomas propios.',
+  puntos:[[F,'DNA circular y ribosomas tipo bacteriano: origen endosimbiótico.'],[C,'Puede haber mezcla de DNA mitocondrial sano y mutado (heteroplasmia); causa enfermedades como MELAS y LHON.']]},
+ {id:'mito',tema:T4,nombre:'Mitocondrias',color:'#c56a1f',grp:'mito',match:/^Mitocondria(_\d)?$/,nodo:'Mitocondria · Mitocondria_2–5',nuevo:'4 más',
+  resumen:'Mitocondrias enteras. Mira la que está en corte para ver su interior.',puntos:[[F,'Producen ATP por fosforilación oxidativa.']]},
+ {id:'cit',tema:TO,nombre:'Citosol',color:'#9ecbeb',grp:'cyt',match:/^Citosol/,nodo:'Citosol',nuevo:'agregado',
+  resumen:'Medio acuoso donde flotan los organelos. Con el citoesqueleto y los organelos forma el citoplasma.',puntos:[[C,'Aquí ocurre la glucólisis y trabajan los ribosomas libres.']]},
+ {id:'vac',tema:TO,nombre:'Vacuola',color:'#2f8f1f',grp:'vac',match:/^Vacuola/,nodo:'Vacuola',resumen:'No entra en los 4 temas, pero ayuda a entender cómo la célula guarda materiales.',puntos:[]},
+ {id:'mem',tema:TO,nombre:'Membrana plasmática',color:'#c87a5e',grp:'mem',match:/^Membrana_plasmatica/,nodo:'Membrana_plasmatica',resumen:'Separa el interior del exterior y controla todo lo que la célula intercambia con su entorno.',puntos:[]},
+];
+// Ficha ampliada por organelo. [F] = fuentes del cuaderno, [C] = complemento verificado con las REFS de abajo.
+const TX='Fuera del modelo';
+const REFS = {
+ os51:['OpenStax, Biology 2e, 5.1 Componentes y estructura de la membrana','https://openstax.org/books/biology-2e/pages/5-1-components-and-structure'],
+ os52:['OpenStax, Biology 2e, 5.2 Transporte pasivo','https://openstax.org/books/biology-2e/pages/5-2-passive-transport'],
+ os53:['OpenStax, Biology 2e, 5.3 Transporte activo','https://openstax.org/books/biology-2e/pages/5-3-active-transport'],
+ os54:['OpenStax, Biology 2e, 5.4 Transporte en masa','https://openstax.org/books/biology-2e/pages/5-4-bulk-transport'],
+ os43:['OpenStax, Biology 2e, 4.3 Células eucariotas','https://openstax.org/books/biology-2e/pages/4-3-eukaryotic-cells'],
+ os45:['OpenStax, Biology 2e, 4.5 El citoesqueleto','https://openstax.org/books/biology-2e/pages/4-5-the-cytoskeleton'],
+ os46:['OpenStax, Biology 2e, 4.6 Conexiones entre células','https://openstax.org/books/biology-2e/pages/4-6-connections-between-cells-and-cellular-activities'],
+ os72:['OpenStax, Biology 2e, 7.2 Glucólisis','https://openstax.org/books/biology-2e/pages/7-2-glycolysis'],
+ os74:['OpenStax, Biology 2e, 7.4 Fosforilación oxidativa','https://openstax.org/books/biology-2e/pages/7-4-oxidative-phosphorylation'],
+ osm:['OpenStax, Microbiology, 14.3 Mecanismos de los antibacterianos','https://openstax.org/books/microbiology/pages/14-3-mechanisms-of-antibacterial-drugs'],
+ cLis:['Cooper, The Cell 2ª ed., Lisosomas','https://www.ncbi.nlm.nih.gov/books/NBK9953/'],
+ cPer:['Cooper, The Cell 2ª ed., Peroxisomas','https://www.ncbi.nlm.nih.gov/books/NBK9930/'],
+ cRE:['Cooper, The Cell 2ª ed., El retículo endoplásmico','https://www.ncbi.nlm.nih.gov/books/NBK9889/'],
+ cGol:['Cooper, The Cell 2ª ed., El aparato de Golgi','https://www.ncbi.nlm.nih.gov/books/NBK9838/'],
+ cMit:['Cooper, The Cell 2ª ed., Organización y función de las mitocondrias','https://www.ncbi.nlm.nih.gov/books/NBK9896/'],
+ cNuc:['Cooper, The Cell 2ª ed., La envoltura nuclear y el tráfico núcleo-citoplasma','https://www.ncbi.nlm.nih.gov/books/NBK9927/'],
+ cPro:['Cooper, The Cell 2ª ed., La vía ubiquitina-proteasoma','https://www.ncbi.nlm.nih.gov/books/NBK9957/'],
+ cMol:['Cooper, The Cell 2ª ed., Composición molecular de las células','https://www.ncbi.nlm.nih.gov/books/NBK9879/'],
+ aNPC:['Alberts et al., Molecular Biology of the Cell 4ª ed., Los complejos del poro nuclear','https://www.ncbi.nlm.nih.gov/books/NBK26932/'],
+ wong:['Wong, Cells: Molecules and Mechanisms, 11.6 Transporte vesicular','https://bio.libretexts.org/Bookshelves/Cell_and_Molecular_Biology/Cells_-_Molecules_and_Mechanisms_(Wong)/11:_Protein_Modification_and_Trafficking/11.06:_Vesicular_Transport'],
+ mpMt:['MedlinePlus Genetics, DNA mitocondrial','https://medlineplus.gov/genetics/chromosome/mitochondrial-dna/'],
+ mpCF:['MedlinePlus Genetics, Gen CFTR','https://medlineplus.gov/genetics/gene/cftr/'],
+ mpFQ:['MedlinePlus Genetics, Fibrosis quística','https://medlineplus.gov/genetics/condition/cystic-fibrosis/'],
+ mpGa:['MedlinePlus Genetics, Enfermedad de Gaucher','https://medlineplus.gov/genetics/condition/gaucher-disease/'],
+ mpTS:['MedlinePlus Genetics, Enfermedad de Tay-Sachs','https://medlineplus.gov/genetics/condition/tay-sachs-disease/'],
+ mpZe:['MedlinePlus Genetics, Espectro de Zellweger','https://medlineplus.gov/genetics/condition/zellweger-spectrum-disorder/'],
+ mpAL:['MedlinePlus Genetics, Adrenoleucodistrofia ligada al X','https://medlineplus.gov/genetics/condition/x-linked-adrenoleukodystrophy/'],
+ mpPr:['MedlinePlus Genetics, Progeria de Hutchinson-Gilford','https://medlineplus.gov/genetics/condition/hutchinson-gilford-progeria-syndrome/'],
+ mpDC:['MedlinePlus Genetics, Discinesia ciliar primaria','https://medlineplus.gov/genetics/condition/primary-ciliary-dyskinesia/'],
+ mpEB:['MedlinePlus Genetics, Epidermólisis ampollosa simple','https://medlineplus.gov/genetics/condition/epidermolysis-bullosa-simplex/'],
+ mpHF:['MedlinePlus Genetics, Hipercolesterolemia familiar','https://medlineplus.gov/genetics/condition/familial-hypercholesterolemia/'],
+ nobel:['Premio Nobel de Fisiología o Medicina 2016, comunicado de prensa','https://www.nobelprize.org/prizes/medicine/2016/press-release/'],
+ ers:['Endoplasmic reticulum stress: molecular mechanism and therapeutic targets, Signal Transduction and Targeted Therapy (2023)','https://www.nature.com/articles/s41392-023-01570-w'],
+ engler:['Engler et al., Matrix elasticity directs stem cell lineage specification, Cell (2006)','https://pubmed.ncbi.nlm.nih.gov/16923388/'],
+ tax:['Structural insight into the stabilization of microtubules by taxanes (PMC)','https://pmc.ncbi.nlm.nih.gov/articles/PMC10049219/'],
+ btz:['Bortezomib as the first proteasome inhibitor anticancer drug (PubMed)','https://pubmed.ncbi.nlm.nih.gov/21247388/'],
+};
+const EXTRA = {
+ mem:{que:'Capa doble de lípidos que rodea a la célula y decide qué entra y qué sale. Es la frontera entre la célula y su entorno.',
+  analogia:'La barda de la fábrica, con puertas, guardias y antenas.',
+  dato:'Mide de 5 a 10 nm de grosor.',
+  estructura:[[C,'<b>Bicapa de fosfolípidos:</b> cabezas que atraen el agua hacia afuera y colas que la repelen hacia adentro.'],[C,'<b>Colesterol</b> entre los fosfolípidos: mantiene la fluidez cuando cambia la temperatura.'],[C,'<b>Proteínas</b> integrales (atraviesan la bicapa) y periféricas (pegadas a una cara).'],[C,'<b>Glucocáliz:</b> azúcares en la cara externa que permiten que las células se reconozcan.'],[C,'Modelo de <b>mosaico fluido</b>: lípidos y proteínas se mueven dentro de la membrana.']],
+  funciones:[[C,'<b>Barrera selectiva:</b> el O₂ y el CO₂ pasan solos por difusión; iones como Na⁺, K⁺, Ca²⁺ y Cl⁻ necesitan proteínas.'],[C,'<b>Transporte pasivo</b> (sin gastar energía): difusión, canales y acuaporinas para el agua.'],[C,'<b>Transporte activo</b> (gasta ATP): la bomba de sodio-potasio saca 3 Na⁺ por cada 2 K⁺ que mete.'],[C,'<b>Endocitosis y exocitosis:</b> mete o saca carga grande en vesículas, como las de clatrina del modelo.'],[F,'Se ancla al citoesqueleto: en las uniones adherentes la cadherina se une a la actina.']],
+  clinica:[[C,'Fibrosis quística: falla el canal de cloruro CFTR y el moco se vuelve espeso y pegajoso.'],[C,'Hipercolesterolemia familiar: los receptores de LDL faltan o fallan y el colesterol no entra a las células.']],
+  refs:['os51','os52','os53','os54','mpFQ','mpHF'],
+  visor:'Actívala con «Membrana». Está cortada para que se vea el interior.'},
+ cit:{que:'El líquido gelatinoso que llena la célula. Junto con el citoesqueleto y los organelos forma el citoplasma.',
+  analogia:'El piso de la fábrica, donde todo flota y se mueve.',
+  dato:'El agua es el 70 % o más de la masa de una célula.',
+  estructura:[[C,'Agua, iones, azúcares, aminoácidos y miles de enzimas.'],[C,'No es lo mismo que citoplasma: citosol es solo el líquido; citoplasma es todo lo que hay entre la membrana y el núcleo.']],
+  funciones:[[C,'Aquí ocurre la <b>glucólisis</b>, el primer paso para obtener energía de la glucosa.'],[C,'Los ribosomas libres fabrican aquí, entre otras, las proteínas de los peroxisomas.'],[F,'Los proteasomas destruyen aquí las proteínas mal plegadas que expulsa el RE.']],
+  refs:['os43','cMol','os72','cPer'],
+  visor:'Apágalo con «Citosol» para ver los organelos con más claridad.'},
+ vac:{que:'Vesícula grande de membrana que almacena agua, iones o desechos. Es típica de las células vegetales; las animales no tienen una vacuola central grande.',
+  analogia:'Una bodega o tanque de almacenamiento.',
+  dato:'En las células vegetales, la vacuola central ocupa la mayor parte del volumen de la célula.',
+  estructura:[[C,'Rodeada por una sola membrana.']],
+  funciones:[[C,'Almacenar agua y otras sustancias.'],[C,'En plantas regula la concentración de agua y sostiene el crecimiento de la célula.']],
+  refs:['os43'],
+  visor:'Es la masa verde grande. Era una pieza del modelo original: su tamaño corresponde más a una célula vegetal que a una animal.'},
+ rer:{analogia:'La línea de ensamblaje con obreros (ribosomas) pegados a la pared.',
+  estructura:[[F,'Cisternas aplanadas conectadas, continuas con la membrana externa del núcleo.'],[C,'La N-glicosilación se hace sobre residuos de asparagina.']],
+  clinica:[[C,'Fibrosis quística: la CFTR con la variante F508del se degrada poco después de fabricarse y nunca llega a la membrana.']],
+  refs:['cRE','ers','mpCF']},
+ rel:{analogia:'La sección de químicos: mezcla aceites y neutraliza tóxicos.',dato:'Abunda en el hígado y en células que fabrican hormonas esteroideas, como las del testículo y el ovario.',
+  estructura:[[C,'Red de túbulos sin ribosomas, conectada con el RE rugoso.']],refs:['cRE']},
+ ribo:{que:'Máquinas que leen el ARN mensajero y unen aminoácidos para formar proteínas. No tienen membrana.',analogia:'Obreros que leen el plano y arman la pieza.',
+  estructura:[[C,'Dos subunidades, grande y pequeña. Pueden estar solos o en grupos (polirribosomas).'],[F,'Se ensamblan en el nucléolo.']],
+  clinica:[[C,'Antibióticos como tetraciclinas y macrólidos atacan los ribosomas bacterianos (70S), distintos de los nuestros (80S).']],
+  refs:['os43','cPer','cRE','osm']},
+ golgi:{analogia:'La oficina de correos: revisa, etiqueta y despacha.',
+  estructura:[[C,'Cuatro regiones: red cis del Golgi, cisternas mediales, cisternas trans y red trans-Golgi.']],
+  clinica:[[C,'Enfermedad de células I: falla la enzima que marca las hidrolasas con manosa-6-fosfato y no llegan al lisosoma.']],
+  refs:['cGol','cLis']},
+ copii:{analogia:'Camión de ida del RE al Golgi.',estructura:[[C,'Se forma con Sar1 y las proteínas de cubierta Sec23/Sec24 y Sec13/Sec31.']],refs:['wong']},
+ copi:{analogia:'Camión de regreso que devuelve lo que se escapó del RE.',estructura:[[C,'Las proteínas residentes del RE llevan la señal KDEL, que permite recuperarlas.']],refs:['wong','cRE']},
+ clat:{analogia:'Un camión con caja reforzada que parece balón de futbol.',estructura:[[C,'La clatrina forma triskeliones (tres cadenas pesadas y tres ligeras). La dinamina estrangula el cuello de la vesícula para soltarla.']],
+  clinica:[[C,'El colesterol LDL entra por endocitosis con receptor; si el receptor falla hay hipercolesterolemia familiar.']],refs:['wong','os54','mpHF']},
+ ves:{que:'Vesículas grandes que salen del Golgi cargadas de producto para liberarlo fuera de la célula.',analogia:'Paquetes listos para entrega.',
+  funciones:[[C,'<b>Secreción constitutiva:</b> ocurre todo el tiempo, en todas las células.'],[C,'<b>Secreción regulada:</b> la vesícula espera una señal para liberar su contenido; así se secreta la insulina.']],refs:['cGol','os54']},
+ mt:{analogia:'Las carreteras principales y los rieles del tren.',dato:'Unos 25 nm de diámetro: el componente más grueso del citoesqueleto.',refs:['os45','tax']},
+ act:{analogia:'La malla bajo la barda que la sostiene y le permite cambiar de forma.',dato:'Unos 7 nm, los más delgados.',refs:['os45']},
+ fi:{analogia:'Cables de acero que aguantan jalones.',dato:'De 8 a 10 nm, entre la actina y los microtúbulos.',
+  estructura:[[C,'Incluyen la queratina (cabello, uñas, piel) y las láminas nucleares.']],
+  clinica:[[C,'Mutaciones en las queratinas 5 y 14 causan epidermólisis ampollosa simple: piel que se ampolla con roces mínimos.']],refs:['os45','cNuc','mpEB']},
+ cent:{analogia:'La estación central desde donde salen las carreteras.',
+  estructura:[[C,'Dos centríolos perpendiculares forman el centrosoma.'],[C,'Las células vegetales no tienen centríolos.']],refs:['os45']},
+ lis:{analogia:'El estómago y el centro de reciclaje.',dato:'Contiene unas 50 enzimas distintas.',
+  clinica:[[C,'Gaucher: falta la glucocerebrosidasa y se acumula glucocerebrósido en hígado, bazo y hueso.'],[C,'Tay-Sachs: falta la β-hexosaminidasa A y se acumula el gangliósido GM2 en neuronas.']],refs:['cLis','mpGa','mpTS']},
+ aut:{analogia:'Desarmar una máquina vieja para reciclar sus piezas.',dato:'Yoshinori Ohsumi ganó el Nobel de Medicina 2016 por descubrir los mecanismos de la autofagia.',
+  clinica:[[C,'La autofagia alterada se ha relacionado con Parkinson, diabetes tipo 2 y cáncer.']],refs:['nobel','cLis']},
+ fag:{analogia:'Tragarse a un intruso y digerirlo.',dato:'Es como los neutrófilos y macrófagos eliminan microorganismos.',refs:['os54','cLis']},
+ perox:{analogia:'La planta de tratamiento: procesa grasas difíciles y neutraliza el agua oxigenada.',dato:'En el hígado, los peroxisomas ayudan a desintoxicar el alcohol.',
+  clinica:[[C,'Adrenoleucodistrofia ligada al X: falla el transportador ABCD1, se acumulan ácidos grasos de cadena muy larga y se dañan la mielina y las suprarrenales.']],refs:['os43','cPer','mpZe','mpAL']},
+ env:{analogia:'Los muros de la oficina con recepción y guardia en cada puerta.',dato:'Un núcleo de mamífero típico tiene de 3 000 a 4 000 poros.',
+  estructura:[[C,'El espacio entre las dos membranas se conecta directamente con el lumen del RE.']],refs:['aNPC','cNuc']},
+ lam:{analogia:'La varilla que refuerza el muro por dentro.',clinica:[[C,'Progeria de Hutchinson-Gilford: una lámina A anómala (gen LMNA) vuelve inestable la envoltura nuclear.']],refs:['cNuc','mpPr']},
+ het:{analogia:'Planos archivados que casi no se consultan.'},
+ eu:{analogia:'Planos abiertos sobre la mesa, en uso.'},
+ nucleolo:{analogia:'El taller que fabrica a los obreros (ribosomas).'},
+ mmem:{analogia:'Una presa: los protones se acumulan de un lado y al regresar mueven la turbina (ATP sintasa).',refs:['os74']},
+ mcr:{refs:['cMit']},
+ mmat:{dato:'El DNA mitocondrial humano tiene unos 16 500 pares de bases y 37 genes.',refs:['mpMt','cMit']},
+ mito:{analogia:'Las plantas de energía de la fábrica.',
+  clinica:[[C,'Cambios en el DNA mitocondrial causan enfermedades como MELAS, LHON y síndrome de Leigh.']],refs:['mpMt','cMit','os74']},
+};
+// Componentes que ayudan a entender la célula pero no están dibujados en el modelo
+const EXTRA_ORG = [
+ {id:'prot',tema:TX,nombre:'Proteasoma',color:'#8f8f8f',sinModelo:true,nodo:'No está en el modelo',
+  resumen:'Complejo de proteasas en el citosol que destruye proteínas marcadas con ubiquitina. Gasta ATP.',
+  analogia:'Una trituradora de papel que solo acepta documentos con sello de “destruir”.',
+  puntos:[[F,'Recibe las proteínas mal plegadas que expulsa el RE.'],[C,'Las proteínas se marcan pegándoles ubiquitina; luego el proteasoma las reconoce y las degrada.'],[C,'El bortezomib, primer inhibidor del proteasoma, se usa contra el mieloma múltiple.']],refs:['cPro','btz']},
+ {id:'cilio',tema:TX,nombre:'Cilios y flagelos',color:'#6fb37a',sinModelo:true,nodo:'No está en el modelo',
+  resumen:'Prolongaciones de la membrana con un esqueleto de microtúbulos que se mueven.',
+  analogia:'Remos (cilios) o una hélice (flagelo).',
+  puntos:[[F,'Axonema 9+2 de microtúbulos que se dobla por la dineína.'],[C,'Los cilios de las vías respiratorias limpian el moco; el espermatozoide se mueve con un flagelo.'],[C,'Discinesia ciliar primaria: los cilios fallan y hay infecciones respiratorias crónicas e infertilidad masculina.']],refs:['os45','mpDC']},
+ {id:'union',tema:TX,nombre:'Uniones celulares',color:'#c9a06b',sinModelo:true,nodo:'No está en el modelo',
+  resumen:'Estructuras de la membrana que pegan una célula con otra y las comunican.',
+  analogia:'Remaches, sellos y puertas entre fábricas vecinas.',
+  puntos:[[F,'Uniones adherentes: la cadherina se ancla a la actina.'],[C,'Uniones estrechas: sellan el espacio entre células epiteliales (claudinas y ocludinas).'],[C,'Desmosomas: remaches de cadherina unidos a filamentos intermedios; abundan en corazón, piel y músculo.'],[C,'Uniones gap: canales que comunican células vecinas; sincronizan la contracción del corazón.']],refs:['os46']},
+ {id:'mec',tema:TX,nombre:'Matriz extracelular',color:'#9fb8c8',sinModelo:true,nodo:'No está en el modelo',
+  resumen:'Red de proteínas fuera de la célula, sobre todo colágeno, que la sostiene y le manda señales.',
+  analogia:'El terreno y los cimientos sobre los que está la fábrica.',
+  puntos:[[F,'Las fuerzas entre la matriz y el citoesqueleto regulan la expresión de genes y la diferenciación.'],[C,'Al unirse a receptores, la matriz activa señales dentro de la célula; por ejemplo, en la coagulación.'],[C,'La rigidez de la matriz puede dirigir en qué tipo de célula se convierte una célula madre: base de muchos andamios en ingeniería de tejidos.']],refs:['os46','engler']},
+];
+// Referencias para los puntos C que ya estaban en las fichas base
+const BASE_REFS = {rer:['ers'],ribo:['cRE'],golgi:['cGol','cLis'],copi:['cRE'],clat:[],ves:['cGol'],mt:['tax'],fi:['os45'],lis:['cLis','mpGa','mpTS'],aut:['cLis'],fag:['os54'],perox:['cPer','mpZe'],lam:['mpPr'],mmat:['mpMt'],rel:['cRE']};
+
+for(const o of ORG){const e=EXTRA[o.id]||{};Object.assign(o,{que:e.que,analogia:e.analogia,dato:e.dato,estructura:e.estructura,clinica:e.clinica,visor:e.visor});if(e.funciones)o.puntos=e.funciones;o.refs=[...new Set([...(e.refs||[]),...(BASE_REFS[o.id]||[])])];}
+for(const o of EXTRA_ORG){o.match=/(?!)/;o.grp=o.id;ORG.push(o);}
+const ORDER=[T1,T2,T3,T4,TO,TX];
+const FIXED=new Set(['mem','cit','act','fi','mt']); // don't move when separating
+const QUIZ=ORG.filter(o=>!o.sinModelo&&!['mem','cit','vac','ves'].includes(o.id));
+
+const $=id=>document.getElementById(id);
+const card=$('card'), list=$('list'), tag=$('sel-tag');
+let mode='explorar', current=null;
+
+function orgCard(o){
+  if(!o) return `<div class="eyebrow">Biología celular · modelo de estudio</div><h1>Célula animal</h1>
+   <p>Toca un organelo o elige uno de la lista. Usa <b>Corte</b> para rebanar la célula y <b>Separar</b> para alejar los organelos.</p>
+   <p>La célula es como una fábrica: el núcleo guarda los planos, el RE y el Golgi producen y empacan, las vesículas reparten, las mitocondrias dan energía y los lisosomas reciclan. La membrana es la barda que lo rodea todo.</p>
+   <p class="legend"><span class="src f">F</span>viene de las fuentes del cuaderno · <span class="src c">C</span>complemento verificado con fuentes externas (cada ficha las lista)</p>
+   <details><summary>Todas las fuentes de los puntos C (${Object.keys(REFS).length})</summary><ol class="refs">${Object.values(REFS).map(([t,u])=>`<li><a href="${u}" target="_blank" rel="noopener">${t}</a></li>`).join('')}</ol></details>`;
+  const li=a=>a&&a.length?`<ul>${a.map(([s,t])=>`<li><span class="src ${s}">${s.toUpperCase()}</span>${t}</li>`).join('')}</ul>`:'';
+  const sec=(t,h)=>h?`<h3>${t}</h3>${h}`:'';
+  return `<div class="eyebrow">${o.sinModelo?'Fuera del modelo':o.tema===TO?'Estructura general':'Tema '+o.tema}</div><h1>${o.nombre}</h1><div class="node">${o.nodo}${o.nuevo?` · <span class="new">${o.nuevo.toUpperCase()}</span>`:''}</div>
+   <p>${o.que||o.resumen}</p>${o.que?`<p>${o.resumen}</p>`:''}
+   ${o.analogia?`<p class="analog"><b>Analogía:</b> ${o.analogia}</p>`:''}
+   ${sec('Estructura',li(o.estructura))}${sec('Funciones',li(o.puntos))}${sec('En medicina',li(o.clinica))}
+   ${o.dato?`<p class="dato"><b>Dato:</b> ${o.dato}</p>`:''}${o.visor?`<p class="node">${o.visor}</p>`:''}
+   ${o.refs&&o.refs.length?`<h3>Fuentes de los puntos C</h3><ol class="refs">${o.refs.map(k=>`<li><a href="${REFS[k][1]}" target="_blank" rel="noopener">${REFS[k][0]}</a></li>`).join('')}</ol>`:''}
+   <p class="legend"><span class="src f">F</span>fuentes del cuaderno · <span class="src c">C</span>complemento con fuentes externas</p>`;
+}
+function renderList(){
+  list.hidden=mode!=='explorar';
+  list.innerHTML=ORDER.map(t=>`<div class="group"><h2>${t}</h2><div class="chips">${ORG.filter(o=>o.tema===t).map(o=>
+   `<button class="chip${o.sinModelo?' sm':''}" data-id="${o.id}" aria-pressed="${!!(current&&current.id===o.id)}"><span class="dot" style="background:${o.color}"></span>${o.nombre}</button>`).join('')}</div></div>`).join('');
+}
+list.addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;const o=ORG.find(x=>x.id===b.dataset.id);select(current&&current.id===o.id?null:o);});
+
+// ---------- three.js
+const canvas=$('c'), stage=$('stage');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.localClippingEnabled=true;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(35,1,1,20000);
+scene.add(new THREE.HemisphereLight(0xffffff,0x445044,1.6));
+const key=new THREE.DirectionalLight(0xffffff,1.6);key.position.set(1,2,1.5);scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,.6);fill.position.set(-2,-1,-1);scene.add(fill);
+const controls=new OrbitControls(camera,canvas);controls.enableDamping=true;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function resize(){const r=stage.getBoundingClientRect();renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;camera.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(stage);resize();
+
+const meshes=[]; const byOrg=new Map(); const grpInfo=new Map();
+const clip=new THREE.Plane(); let cutN=new THREE.Vector3(), cutRange=[0,1], cellCenter=new THREE.Vector3(), cellSize=1, celula;
+const anchors=new Map();
+
+new GLTFLoader().load('celula.glb',g=>{
+  const root=g.scene;scene.add(root);root.updateMatrixWorld(true);
+  celula=root.getObjectByName('Celula');
+  root.traverse(n=>{ if(!n.isMesh) return;
+    let p=n,org=null; while(p&&!org){org=ORG.find(o=>o.match.test(p.name))||null;p=p.parent;}
+    if(!org){n.visible=false;return;}
+    n.material=n.material.clone(); const m=n.material; m.clippingPlanes=[clip];
+    n.userData={org,baseOpacity:m.opacity,baseTransparent:m.transparent,home:n.position.clone()};
+    if(org.id==='mem') n.visible=false;
+    meshes.push(n); if(!byOrg.has(org.id)) byOrg.set(org.id,[]); byOrg.get(org.id).push(n);
+  });
+  // cell frame from the membrane
+  const box=new THREE.Box3(); byOrg.get('mem').forEach(m=>box.expandByObject(m));
+  box.getCenter(cellCenter); cellSize=box.getSize(new THREE.Vector3()).length();
+  const ex=celula.userData.plano_corte;
+  const nm=new THREE.Matrix3().getNormalMatrix(celula.matrixWorld);
+  cutN=new THREE.Vector3(...ex.normal).applyMatrix3(nm).normalize();
+  // range of the cut along the plane normal
+  const pr=[];byOrg.get('mem').forEach(m=>{const pos=m.geometry.attributes.position,v=new THREE.Vector3();for(let i=0;i<pos.count;i+=7){v.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);pr.push(v.dot(cutN));}});
+  const all=[];meshes.forEach(m=>{if(m.userData.org.id==='mem')return;const pos=m.geometry.attributes.position,v=new THREE.Vector3();for(let i=0;i<pos.count;i+=97){v.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);all.push(v.dot(cutN));}});
+  cutRange=[Math.min(...pr),Math.max(...all)+2]; setCut(0);
+  // group centroids (for separating) + label anchors
+  for(const o of ORG){const ms=byOrg.get(o.id);if(!ms)continue;
+    const c=new THREE.Vector3(),v=new THREE.Vector3();let k=0;
+    ms.forEach(m=>{const pos=m.geometry.attributes.position,st=Math.max(1,pos.count/400|0);for(let i=0;i<pos.count;i+=st){v.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);c.add(v);k++;}});
+    c.divideScalar(k);
+    let best=null,bd=1e18;ms.forEach(m=>{const pos=m.geometry.attributes.position,st=Math.max(1,pos.count/600|0);for(let i=0;i<pos.count;i+=st){v.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);const d=v.distanceToSquared(c);if(d<bd){bd=d;best=v.clone();}}});
+    anchors.set(o.id,{c,a:best});
+    const gk=o.grp; if(!grpInfo.has(gk)) grpInfo.set(gk,{sum:new THREE.Vector3(),n:0}); grpInfo.get(gk).sum.add(c.clone().multiplyScalar(k)); grpInfo.get(gk).n+=k;
+  }
+  controls.target.copy(cellCenter);
+  camera.position.copy(cellCenter).add(new THREE.Vector3(0.15,0.75,0.9).normalize().multiplyScalar(cellSize*1.3));
+  controls.minDistance=cellSize*.12;controls.maxDistance=cellSize*3;camera.near=cellSize/600;camera.far=cellSize*20;camera.updateProjectionMatrix();
+  buildLabels(); $('status').hidden=true; render();
+},xhr=>{if(xhr.total)$('status').textContent=`Cargando modelo… ${Math.round(xhr.loaded/xhr.total*100)} %`;},err=>{$('status').textContent='No se pudo cargar el modelo: '+(err&&err.message||err);console.error(err);});
+
+function setCut(t){ // t: 0 = sin corte .. 1 = corte profundo
+  const d=cutRange[1]-(cutRange[1]-cutRange[0])*t*0.85;
+  clip.set(cutN.clone().negate(),d);
+}
+$('s-cut').addEventListener('input',e=>setCut(e.target.value/100));
+
+let explode=0;
+function setExplode(t){explode=t;
+  for(const m of meshes){const o=m.userData.org;
+    if(FIXED.has(o.id)){m.visible=visibleFor(o)&&t<0.05;continue;}
+    m.visible=visibleFor(o);
+    const gi=grpInfo.get(o.grp); const gc=gi.sum.clone().divideScalar(gi.n);
+    const dir=gc.clone().sub(cellCenter); const w=dir.clone().multiplyScalar(t*0.75);
+    // world offset -> parent local
+    const inv=new THREE.Matrix4().copy(m.parent.matrixWorld).invert(); const l0=new THREE.Vector3().applyMatrix4(inv),l1=w.clone().applyMatrix4(inv);
+    m.position.copy(m.userData.home).add(l1.sub(l0));
+  }}
+$('s-exp').addEventListener('input',e=>setExplode(e.target.value/100));
+function visibleFor(o){
+  if(o.id==='mem') return $('t-mem').checked;
+  if(o.id==='cit') return $('t-cyt').checked;
+  if(['mt','act','fi'].includes(o.id)) return $('t-ske').checked;
+  return true;
+}
+function refreshVis(){setExplode(explode);applyHighlight();}
+['t-mem','t-cyt','t-ske'].forEach(id=>$(id).addEventListener('change',refreshVis));
+const rot=$('t-rot');rot.addEventListener('change',()=>controls.autoRotate=rot.checked&&!reduce);
+
+function applyHighlight(){
+  const focus=quiz.active||!current||current.sinModelo?null:current;
+  for(const n of meshes){const m=n.material,u=n.userData;
+    const on=!focus||u.org===focus;
+    if(on){m.transparent=u.baseTransparent;m.opacity=u.baseOpacity;m.depthWrite=!u.baseTransparent;}
+    else{m.transparent=true;m.opacity=['act','fi','mt','cit'].includes(u.org.id)?0.02:0.07;m.depthWrite=false;}
+    if(m.emissive) m.emissive.setRGB(...(focus&&u.org===focus?[0.12,0.12,0.12]:[0,0,0]));
+    m.needsUpdate=true;}
+}
+function select(o){current=o; if(mode==='explorar') card.innerHTML=orgCard(o); tag.textContent=o?o.nombre:'Toca un organelo'; renderList(); applyHighlight(); updateLabels();}
+
+// ---------- labels
+const lines=$('lines'), lbls=$('lbls'); const labelEls=new Map();
+function buildLabels(){
+  for(const o of ORG){if(!anchors.has(o.id)||['mem','cit'].includes(o.id))continue;
+    const d=document.createElement('button');d.className='lbl';d.textContent=o.nombre;d.hidden=true;d.onclick=()=>{if(mode==='explorar')select(current===o?null:o);else if(mode==='examen')answer(o);};
+    lbls.appendChild(d);labelEls.set(o.id,d);}
+}
+function updateLabels(){
+  const show=$('t-lbl').checked&&!quiz.active; lines.innerHTML='';
+  if(!show){labelEls.forEach(e=>e.hidden=true);return;}
+  const r=stage.getBoundingClientRect(),cx=r.width/2,cy=r.height/2; let svg='';
+  for(const [id,el] of labelEls){const o=ORG.find(x=>x.id===id);
+    const vis=(byOrg.get(id)||[]).some(m=>m.visible)&&(!current||current.sinModelo||current.id===id);
+    if(!vis){el.hidden=true;continue;}
+    const m0=byOrg.get(id)[0]; const off=new THREE.Vector3().setFromMatrixPosition(m0.matrixWorld);
+    const base=new THREE.Vector3().setFromMatrixPosition(m0.parent.matrixWorld.clone().multiply(new THREE.Matrix4().makeTranslation(m0.userData.home.x,m0.userData.home.y,m0.userData.home.z)));
+    const a=anchors.get(id).a.clone().add(off.sub(base)).project(camera);
+    if(a.z>1){el.hidden=true;continue;}
+    const x=(a.x+1)/2*r.width,y=(1-a.y)/2*r.height; let dx=x-cx,dy=y-cy; const L=Math.hypot(dx,dy)||1;
+    const lx=x+dx/L*46,ly=y+dy/L*30;
+    el.hidden=false;el.style.left=lx+'px';el.style.top=ly+'px';
+    svg+=`<line x1="${x}" y1="${y}" x2="${lx}" y2="${ly}"/><circle cx="${x}" cy="${y}" r="2.2"/>`;}
+  lines.innerHTML=svg;
+}
+$('t-lbl').addEventListener('change',updateLabels);
+
+// ---------- picking
+const ray=new THREE.Raycaster(), ptr=new THREE.Vector2(); let down=null;
+canvas.addEventListener('pointerdown',e=>down=[e.clientX,e.clientY]);
+canvas.addEventListener('pointerup',e=>{
+  if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>5) return;
+  const r=canvas.getBoundingClientRect();ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+  ray.setFromCamera(ptr,camera);
+  const hits=ray.intersectObjects(meshes.filter(m=>m.visible),false).filter(h=>clip.distanceToPoint(h.point)>=0);
+  const focus=quiz.active||!current||current.sinModelo?null:current;
+  const pick=hits.find(h=>!['mem','cit','act','fi'].includes(h.object.userData.org.id)&&(!focus||h.object.userData.org===focus||h.object.material.opacity>0.5))||hits.find(h=>h.object.userData.org.id!=='cit')||null;
+  if(mode==='examen'){ if(pick) answer(pick.object.userData.org); return; }
+  if(!pick){select(null);return;}
+  const o=pick.object.userData.org; if(mode!=='explorar') setMode('explorar'); select(current===o?null:o);
+});
+
+// ---------- processes
+const tracer=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),new THREE.MeshStandardMaterial({color:0xff2f6d,emissive:0xff2f6d,emissiveIntensity:.6}));
+tracer.visible=false;scene.add(tracer);
+const kin=new THREE.Group();{const mk=(c,r)=>new THREE.Mesh(new THREE.SphereGeometry(r,16,12),new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.35}));
+ kin.add(mk(0x2d6cdf,1),mk(0x2d6cdf,1));const cargo=mk(0xffb000,2.2);cargo.position.y=3;kin.add(cargo);const stalk=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,3,8),new THREE.MeshStandardMaterial({color:0x2d6cdf}));stalk.position.y=1.5;kin.add(stalk);}
+kin.visible=false;scene.add(kin);
+const PROC={
+ secrecion:{titulo:'Ruta de una proteína de secreción',tema:'Temas 1 y 2',path:'ruta_secrecion',dur:16,
+  pasos:['Ribosoma sobre el RE rugoso: la SRP reconoce la secuencia señal [F]','Lumen del RE: plegamiento con chaperonas y N-glicosilación [F]','Vesícula COPII sale del RE [F]','Viaja hacia el Golgi [F]','Entra por la cara cis del Golgi (azul) [C]','Cisternas: se recortan y completan oligosacáridos [F]','Red trans-Golgi (rojo): se clasifica [F]','Vesícula hacia la membrana [F]','Exocitosis en la membrana plasmática [C]'],
+  objetos:['ribo','rer','copii','golgi','clat','ves']},
+ cinesina:{titulo:'Cinesina sobre un microtúbulo',tema:'Tema 2',path:'microtubulo_cinesina',dur:12,
+  pasos:['La cinesina parte cerca del centrosoma, el extremo (−) [C]','Sus dos cabezas alternan pasos de ~8 nm usando ATP [C]','Arrastra una vesícula de carga [F]','Llega a la periferia, el extremo (+). La dineína hace el viaje contrario [F/C]'],
+  objetos:['mt','cent']}
+};
+let anim=null;
+function worldPath(key){return celula.userData[key].map(p=>celula.localToWorld(new THREE.Vector3(...p)));}
+function startProc(id){
+  const pr=PROC[id]; const pts=worldPath(pr.path); const curve=new THREE.CatmullRomCurve3(pts,false,'centripetal');
+  const scale=cellSize/600; tracer.scale.setScalar(5*scale); kin.scale.setScalar(4.5*scale);
+  current=null; for(const n of meshes){const m=n.material,u=n.userData,on=pr.objetos.includes(u.org.id);
+    m.transparent=!on||u.baseTransparent;m.opacity=on?u.baseOpacity:0.06;m.depthWrite=on&&!u.baseTransparent;if(m.emissive)m.emissive.setRGB(0,0,0);m.needsUpdate=true;}
+  anim={id,curve,t0:performance.now(),dur:pr.dur*1000,n:pr.pasos.length,step:-1};
+  tracer.visible=id==='secrecion';kin.visible=id==='cinesina';
+  controls.target.copy(curve.getPoint(.5));
+  renderProcCard();
+}
+function stopProc(){anim=null;tracer.visible=false;kin.visible=false;applyHighlight();}
+function tickProc(now){ if(!anim) return;
+  let t=Math.min(1,Math.max(0,(now-anim.t0)/anim.dur));
+  const p=anim.curve.getPointAt(t);
+  if(anim.id==='secrecion'){tracer.position.copy(p);}
+  else{const tan=anim.curve.getTangentAt(t);kin.position.copy(p);kin.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tan);
+    const ph=(now/260)%2<1; kin.children[0].position.set(ph?1.6:-0.4,0,0);kin.children[1].position.set(ph?-0.4:1.6,0,0);}
+  const s=Math.min(anim.n-1,Math.floor(t*anim.n)); if(s!==anim.step){anim.step=s;document.querySelectorAll('.steps li').forEach((li,i)=>li.classList.toggle('on',i===s));}
+  if(t>=1&&!anim.done){anim.done=true;const b=$('p-again');if(b)b.hidden=false;}
+}
+function renderProcCard(){
+  const a=anim?PROC[anim.id]:null;
+  card.innerHTML=`<div class="eyebrow">Procesos animados</div><h1>${a?a.titulo:'Elige un proceso'}</h1>
+   <div class="row"><button class="btn ${anim&&anim.id==='secrecion'?'primary':''}" data-p="secrecion">Ruta de secreción</button><button class="btn ${anim&&anim.id==='cinesina'?'primary':''}" data-p="cinesina">Cinesina en microtúbulo</button>${anim?'<button class="btn" id="p-stop">Detener</button>':''}</div>
+   ${a?`<p class="node">${a.tema}</p><ol class="steps">${a.pasos.map(s=>`<li>${s.replace(/\[(F|C|F\/C)\]/,(m,x)=>`<span class="src ${x==='C'?'c':'f'}">${x}</span>`)}</li>`).join('')}</ol><div class="row"><button class="btn" id="p-again" hidden>Repetir</button></div>`
+     :'<p>La esfera rosa sigue a una proteína desde el ribosoma hasta afuera de la célula. La cinesina muestra cómo un motor camina sobre un microtúbulo con su carga.</p>'}`;
+  card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>startProc(b.dataset.p));
+  const st=$('p-stop');if(st)st.onclick=()=>{stopProc();renderProcCard();};
+  const ag=$('p-again');if(ag)ag.onclick=()=>startProc(anim.id);
+}
+
+// ---------- quiz
+const quiz={active:false,target:null,n:0,ok:0,last:null,total:10};
+function nextQ(){quiz.n++; if(quiz.n>quiz.total){quiz.active=false;renderQuiz();applyHighlight();return;}
+  let o;do{o=QUIZ[Math.floor(Math.random()*QUIZ.length)];}while(quiz.target&&o.id===quiz.target.id);quiz.target=o;renderQuiz();}
+function answer(o){ if(!quiz.active) return; const good=o.id===quiz.target.id; if(good)quiz.ok++;
+  quiz.last={good,picked:o,want:quiz.target}; nextQ(); }
+function renderQuiz(){
+  if(!quiz.active&&quiz.n===0){card.innerHTML=`<div class="eyebrow">Modo examen</div><h1>¿Dónde está?</h1><p>Te pido un organelo y tú lo tocas en el modelo. Son ${quiz.total} preguntas; las etiquetas y la lista se ocultan.</p><div class="row"><button class="btn primary" id="q-go">Empezar</button></div>`;$('q-go').onclick=startQuiz;return;}
+  if(!quiz.active){card.innerHTML=`<div class="eyebrow">Resultado</div><h1>${quiz.ok} de ${quiz.total}</h1>${fb()}<div class="row"><button class="btn primary" id="q-go">Otra ronda</button></div>`;$('q-go').onclick=startQuiz;return;}
+  card.innerHTML=`<div class="eyebrow">Pregunta ${quiz.n} de ${quiz.total} · aciertos ${quiz.ok}</div><h1>Toca: ${quiz.target.nombre}</h1><p class="node">Tema ${quiz.target.tema}</p>${fb()}<div class="row"><button class="btn" id="q-skip">No sé, siguiente</button><button class="btn" id="q-end">Terminar</button></div>`;
+  $('q-skip').onclick=()=>{quiz.last={good:false,picked:null,want:quiz.target};nextQ();};
+  $('q-end').onclick=()=>{quiz.active=false;quiz.n=0;renderQuiz();updateLabels();};
+}
+function fb(){const l=quiz.last;if(!l)return'';return l.good?`<p class="ok">Correcto: ${l.want.nombre}.</p>`:`<p class="no">${l.picked?`Eso era ${l.picked.nombre}; `:''}buscabas ${l.want.nombre}.</p>`;}
+function startQuiz(){quiz.active=true;quiz.n=0;quiz.ok=0;quiz.last=null;quiz.target=null;current=null;applyHighlight();updateLabels();nextQ();}
+
+// ---------- tabs
+function setMode(m){mode=m;['explorar','procesos','examen'].forEach(x=>$('tab-'+x).setAttribute('aria-selected',x===m));
+  if(m!=='procesos'&&anim) stopProc(); if(m!=='examen'&&quiz.active){quiz.active=false;quiz.n=0;}
+  if(m==='explorar'){card.innerHTML=orgCard(current);applyHighlight();}
+  if(m==='procesos'){renderProcCard();}
+  if(m==='examen'){current=null;renderQuiz();applyHighlight();}
+  renderList();updateLabels();}
+['explorar','procesos','examen'].forEach(x=>$('tab-'+x).onclick=()=>setMode(x));
+
+card.innerHTML=orgCard(null);renderList();
+let lastL=0;
+function render(){renderer.setAnimationLoop(()=>{const now=performance.now();controls.update();try{tickProc(now);}catch(e){console.error(e);stopProc();}renderer.render(scene,camera);if(now-lastL>60){lastL=now;updateLabels();}});}
+</script>
+
+</body>
+</html>
