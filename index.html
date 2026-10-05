@@ -69,6 +69,11 @@ h1{font:650 26px/1.15 var(--f-display);margin:6px 0 4px;text-wrap:balance}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .dot{width:10px;height:10px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.2)}
 .chip.sm{border-style:dashed}
+.qh{font-size:22px}
+.steps li{padding:4px 6px;border-radius:6px}
+.steps li.on{background:var(--accent-soft)}
+select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin-left:6px}
+.qmodes{margin-top:10px}
 .refs{font-size:12.5px;gap:4px!important;color:var(--muted)}
 .refs a{color:var(--accent)}
 details{margin-top:12px;font-size:13px}summary{cursor:pointer;color:var(--accent);font-weight:600}
@@ -236,6 +241,8 @@ const REFS = {
  engler:['Engler et al., Matrix elasticity directs stem cell lineage specification, Cell (2006)','https://pubmed.ncbi.nlm.nih.gov/16923388/'],
  tax:['Structural insight into the stabilization of microtubules by taxanes (PMC)','https://pmc.ncbi.nlm.nih.gov/articles/PMC10049219/'],
  btz:['Bortezomib as the first proteasome inhibitor anticancer drug (PubMed)','https://pubmed.ncbi.nlm.nih.gov/21247388/'],
+ jung:['Jung, Cell & Molecular Biology, 3.5 Transporte con el citoesqueleto','https://cellandmolecularbiology.pressbooks.tru.ca/chapter/3-5/'],
+ wei:['Wei et al., Proapoptotic BAX and BAK: a requisite gateway to mitochondrial dysfunction and death, Science (2001)','https://www.science.org/doi/10.1126/science.1059108'],
 };
 const EXTRA = {
  mem:{que:'Capa doble de lípidos que rodea a la célula y decide qué entra y qué sale. Es la frontera entre la célula y su entorno.',
@@ -377,7 +384,7 @@ new ResizeObserver(resize).observe(stage);resize();
 
 const meshes=[]; const byOrg=new Map(); const grpInfo=new Map();
 const clip=new THREE.Plane(); let cutN=new THREE.Vector3(), cutRange=[0,1], cellCenter=new THREE.Vector3(), cellSize=1, celula;
-const anchors=new Map();
+const anchors=new Map(); const meshByName=new Map();
 
 new GLTFLoader().load('celula.glb',g=>{
   const root=g.scene;scene.add(root);root.updateMatrixWorld(true);
@@ -388,7 +395,7 @@ new GLTFLoader().load('celula.glb',g=>{
     n.material=n.material.clone(); const m=n.material; m.clippingPlanes=[clip];
     n.userData={org,baseOpacity:m.opacity,baseTransparent:m.transparent,home:n.position.clone()};
     if(org.id==='mem') n.visible=false;
-    meshes.push(n); if(!byOrg.has(org.id)) byOrg.set(org.id,[]); byOrg.get(org.id).push(n);
+    meshByName.set(n.name,n); meshes.push(n); if(!byOrg.has(org.id)) byOrg.set(org.id,[]); byOrg.get(org.id).push(n);
   });
   // cell frame from the membrane
   const box=new THREE.Box3(); byOrg.get('mem').forEach(m=>box.expandByObject(m));
@@ -444,7 +451,8 @@ function refreshVis(){setExplode(explode);applyHighlight();}
 const rot=$('t-rot');rot.addEventListener('change',()=>controls.autoRotate=rot.checked&&!reduce);
 
 function applyHighlight(){
-  const focus=quiz.active||!current||current.sinModelo?null:current;
+  if(anim) return;
+  const focus=quiz.active?quiz.focus:(!current||current.sinModelo?null:current);
   for(const n of meshes){const m=n.material,u=n.userData;
     const on=!focus||u.org===focus;
     if(on){m.transparent=u.baseTransparent;m.opacity=u.baseOpacity;m.depthWrite=!u.baseTransparent;}
@@ -495,81 +503,336 @@ canvas.addEventListener('pointerup',e=>{
   const o=pick.object.userData.org; if(mode!=='explorar') setMode('explorar'); select(current===o?null:o);
 });
 
-// ---------- processes
-const tracer=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),new THREE.MeshStandardMaterial({color:0xff2f6d,emissive:0xff2f6d,emissiveIntensity:.6}));
-tracer.visible=false;scene.add(tracer);
+// ---------- processes (step engine)
+const mkS=(c,r)=>new THREE.Mesh(new THREE.SphereGeometry(r,20,14),new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.6}));
+const tracer=mkS(0xff2f6d,1); tracer.visible=false; scene.add(tracer);
+const tracer2=mkS(0xff9a1f,1); tracer2.visible=false; scene.add(tracer2);
 const kin=new THREE.Group();{const mk=(c,r)=>new THREE.Mesh(new THREE.SphereGeometry(r,16,12),new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.35}));
  kin.add(mk(0x2d6cdf,1),mk(0x2d6cdf,1));const cargo=mk(0xffb000,2.2);cargo.position.y=3;kin.add(cargo);const stalk=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,3,8),new THREE.MeshStandardMaterial({color:0x2d6cdf}));stalk.position.y=1.5;kin.add(stalk);}
 kin.visible=false;scene.add(kin);
-const PROC={
- secrecion:{titulo:'Ruta de una proteína de secreción',tema:'Temas 1 y 2',path:'ruta_secrecion',dur:16,
-  pasos:['Ribosoma sobre el RE rugoso: la SRP reconoce la secuencia señal [F]','Lumen del RE: plegamiento con chaperonas y N-glicosilación [F]','Vesícula COPII sale del RE [F]','Viaja hacia el Golgi [F]','Entra por la cara cis del Golgi (azul) [C]','Cisternas: se recortan y completan oligosacáridos [F]','Red trans-Golgi (rojo): se clasifica [F]','Vesícula hacia la membrana [F]','Exocitosis en la membrana plasmática [C]'],
-  objetos:['ribo','rer','copii','golgi','clat','ves']},
- cinesina:{titulo:'Cinesina sobre un microtúbulo',tema:'Tema 2',path:'microtubulo_cinesina',dur:12,
-  pasos:['La cinesina parte cerca del centrosoma, el extremo (−) [C]','Sus dos cabezas alternan pasos de ~8 nm usando ATP [C]','Arrastra una vesícula de carga [F]','Llega a la periferia, el extremo (+). La dineína hace el viaje contrario [F/C]'],
-  objetos:['mt','cent']}
+const dyn=kin.clone(true); dyn.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.color.set(0xe0731f);o.material.emissive.set(0xe0731f);}}); dyn.visible=false; scene.add(dyn);
+
+const SEC=[
+ ['Un ribosoma empieza la proteína; la SRP reconoce la secuencia señal y la lleva al RE rugoso.','F',['r:0'],['ribo','rer']],
+ ['Dentro del RE, las chaperonas la pliegan y empieza la N-glicosilación.','F',['r:0','r:1'],['rer']],
+ ['Sale del RE en una vesícula COPII.','F',['r:1','r:2','r:3'],['rer','copii']],
+ ['Entra al Golgi por la cara cis (azul).','C',['r:3','r:4'],['copii','golgi']],
+ ['Avanza por las cisternas: se recortan y completan sus oligosacáridos.','F',['r:4','r:5'],['golgi']],
+ ['En la red trans-Golgi (rojo) se clasifica según su destino.','F',['r:5','r:6'],['golgi']],
+ ['Viaja en una vesícula hacia la membrana.','F',['r:6','r:7','r:8'],['ves','clat']],
+];
+const st=(t,s,go,focus,extra={})=>Object.assign({t,s,go,focus},extra);
+const PROCS={
+ secrecion:{titulo:'Ruta de una proteína de secreción',tema:'Temas 1 y 2',refs:['cGol','os54'],pasos:[...SEC.map(a=>st(...a)),st('Exocitosis: la vesícula se fusiona con la membrana y libera la proteína afuera.','C',['r:8'],['ves'],{pulse:['mem']})]},
+ membrana:{titulo:'Ruta de una proteína de membrana',tema:'Temas 1 y 2',refs:['cRE','os51'],pasos:[...SEC.map(a=>st(...a)),st('La vesícula se fusiona con la membrana, pero la proteína se queda insertada en ella: así llegan receptores y canales.','C',['r:8'],['ves'],{pulse:['mem']})]},
+ copi:{titulo:'Transporte de regreso con COPI',tema:'Tema 2',refs:['wong','cRE'],pasos:[
+  st('Una proteína que debe quedarse en el RE (lleva la señal KDEL) se escapa en una vesícula COPII.','C',['r:1','r:2','r:3'],['rer','copii']),
+  st('Llega a la cara cis del Golgi.','F',['r:3','r:4'],['golgi']),
+  st('Un receptor del Golgi reconoce la señal KDEL.','C',['r:4'],['golgi'],{pulse:['golgi']}),
+  st('Una vesícula COPI la regresa al RE.','F',['r:4','c:copi','r:1'],['copi','rer']),
+  st('De vuelta en el RE, sigue haciendo su trabajo.','C',['r:1'],['rer'],{pulse:['rer']})]},
+ motores:{titulo:'Cinesina y dineína',tema:'Tema 2',refs:['os45','jung'],pasos:[
+  st('Los microtúbulos crecen desde el centrosoma (extremo −) hacia la periferia (extremo +).','C',['mt:0'],['mt','cent'],{pulse:['cent']}),
+  st('La cinesina (azul) lleva su carga hacia la periferia, el extremo +.','C',['mtpath'],['mt'],{kin:true}),
+  st('La dineína (naranja) camina en sentido contrario, hacia el centrosoma.','C',['mt:1'],['mt'],{go2:['mtpath-r'],dyn:true}),
+  st('Las dos gastan ATP y así la célula reparte vesículas y organelos en ambos sentidos.','F',['mtpath'],['mt','cent'],{kin:true,go2:['mtpath-r'],dyn:true})]},
+ endocitosis:{titulo:'Endocitosis con clatrina',tema:'Temas 2 y 3',refs:['os54','wong','mpHF'],pasos:[
+  st('Partículas de colesterol LDL se unen a sus receptores en la membrana.','C',['mem'],['clat'],{pulse:['mem']}),
+  st('La clatrina se ensambla por dentro y forma una jaula que hunde la membrana.','C',['mem'],['clat'],{pulse:['clat']}),
+  st('La dinamina estrangula el cuello y la vesícula se suelta hacia el citosol.','C',['mem','c:clat'],['clat']),
+  st('La cubierta se desarma y la carga sigue hacia los lisosomas.','F',['c:clat','a:lis'],['clat','lis']),
+  st('El lisosoma libera el colesterol para que la célula lo use. Si el receptor falla: hipercolesterolemia familiar.','C',['a:lis'],['lis'],{pulse:['lis']})]},
+ m6p:{titulo:'Del Golgi al lisosoma',tema:'Tema 3',refs:['cLis'],pasos:[
+  st('Una hidrolasa ácida se fabrica en el RE rugoso.','C',['r:0','r:1'],['rer']),
+  st('Pasa al Golgi y se marca con manosa-6-fosfato.','C',['r:1','r:3','r:4','r:5'],['copii','golgi'],{pulse:['golgi']}),
+  st('En la red trans-Golgi, un receptor reconoce la marca.','C',['r:5','r:6'],['golgi']),
+  st('Viaja en una vesícula de clatrina.','C',['r:6','c:clat'],['clat']),
+  st('Llega al lisosoma, donde trabajará a pH cercano a 5.','C',['c:clat','a:lis'],['lis'],{pulse:['lis']}),
+  st('Si la marca falla (enfermedad de células I), la enzima sale de la célula y el lisosoma queda sin ella.','C',['a:lis'],['lis','golgi'])]},
+ autofagia:{titulo:'Autofagia paso a paso',tema:'Tema 3',refs:['cLis','nobel'],pasos:[
+  st('Una mitocondria vieja debe reciclarse.','F',['mesh:Autofagosoma_carga_mitocondria'],['aut']),
+  st('Una doble membrana la rodea y se cierra: se forma el autofagosoma.','C',['mesh:Autofagosoma_carga_mitocondria'],['aut'],{pulse:['aut']}),
+  st('Un lisosoma se acerca y se fusiona con el autofagosoma.','F',['mesh:Lisosoma_fusionandose'],['aut'],{fx:'approach:Lisosoma_fusionandose>Autofagosoma_membrana_externa'}),
+  st('Las hidrolasas del lisosoma digieren la mitocondria.','F',['mesh:Autofagosoma_carga_mitocondria'],['aut'],{fx:'shrink:Autofagosoma_carga_mitocondria'}),
+  st('Las piezas (aminoácidos, lípidos) salen al citosol para reutilizarse.','C',['mesh:Autofagosoma_membrana_externa','c:cit'],['aut'])]},
+ fagocitosis:{titulo:'Fagocitosis',tema:'Tema 3',refs:['os54','cLis'],pasos:[
+  st('Un glóbulo blanco detecta una bacteria y su membrana la rodea.','C',['mem'],['fag'],{pulse:['mem']}),
+  st('Se forma el fagosoma dentro de la célula.','F',['mem','mesh:Fagosoma_membrana'],['fag']),
+  st('Un lisosoma se acerca y se fusiona con el fagosoma.','F',['mesh:Lisosoma_hacia_fagosoma'],['fag'],{fx:'approach:Lisosoma_hacia_fagosoma>Fagosoma_membrana'}),
+  st('Las enzimas del lisosoma destruyen la bacteria.','F',['mesh:Bacteria_fagocitada'],['fag'],{fx:'shrink:Bacteria_fagocitada'})]},
+ peroxisoma:{titulo:'El peroxisoma en acción',tema:'Tema 3',refs:['cPer','os43','mpAL'],pasos:[
+  st('Un ácido graso de cadena muy larga llega al peroxisoma.','C',['c:cit','a:perox'],['perox']),
+  st('Se acorta por beta-oxidación; el primer paso produce agua oxigenada (H₂O₂).','C',['a:perox'],['perox'],{pulse:['perox']}),
+  st('La catalasa convierte el H₂O₂ en agua y oxígeno.','F',['a:perox'],['perox'],{pulse:['perox']}),
+  st('La cadena ya corta pasa a la mitocondria para terminar de oxidarse.','C',['a:perox','a:mito'],['perox','mito'])]},
+ gen:{titulo:'De gen a proteína',tema:'Temas 1 y 4',refs:[],pasos:[
+  st('En la eucromatina, la RNA polimerasa copia un gen a RNA mensajero.','F',['a:eu'],['eu','het'],{pulse:['eu']}),
+  st('El pre-RNA recibe caperuza y cola de poli-A, y el espliceosoma le quita los intrones.','F',['a:eu'],['eu']),
+  st('El RNA mensajero sale del núcleo por un poro nuclear.','F',['a:eu','nm:Poros_nucleares@a:rer'],['env']),
+  st('En el citosol lo lee un ribosoma.','F',['nm:Poros_nucleares@a:rer','r:0'],['ribo','rer']),
+  st('Si la proteína trae secuencia señal, el ribosoma se une al RE rugoso y sigue la ruta de secreción.','F',['r:0','r:1'],['rer'],{pulse:['rer']})]},
+ atp:{titulo:'Producción de ATP',tema:'Tema 4',refs:['os74','cMit'],pasos:[
+  st('En la matriz, el ciclo de Krebs desarma los restos de la glucosa y carga electrones en NADH y FADH₂.','F',['c:mmat'],['mmat','mcr','mmem'],{pulse:['mmat']}),
+  st('Los electrones recorren la cadena respiratoria en la membrana interna y las crestas.','F',['c:mmat','a:mcr'],['mmat','mcr','mmem'],{pulse:['mcr']}),
+  st('Esa energía bombea protones (H⁺) al espacio intermembrana: se forma una presa.','F',['a:mcr','a:mmem'],['mmat','mcr','mmem'],{pulse:['mmem']}),
+  st('Los protones regresan por la ATP sintasa, que gira y forma ATP.','F',['a:mmem','c:mmat'],['mmat','mcr','mmem']),
+  st('Al final de la cadena, el oxígeno recibe los electrones y se forma agua.','C',['c:mmat'],['mmat','mcr','mmem'],{pulse:['mmat']})]},
+ apoptosis:{titulo:'Apoptosis',tema:'Tema 4',refs:['wei'],pasos:[
+  st('Una señal de daño grave activa a BAX y BAK, que perforan la membrana externa de la mitocondria.','C',['a:mmem'],['mmem','mito'],{pulse:['mmem']}),
+  st('Se libera citocromo c al citosol.','F',['a:mmem','c:cit'],['mmem']),
+  st('El citocromo c arma el apoptosoma, que activa la caspasa 9.','F',['c:cit'],['cit']),
+  st('La caspasa 9 activa a las caspasas 3, que cortan el DNA y el citoesqueleto.','F',['c:cit','a:eu'],['eu','het','mt','act','fi']),
+  st('La célula se desarma de forma ordenada.','F',['a:eu'],null,{fx:'explode'})]},
+ division:{titulo:'División celular simplificada',tema:'Temas 2 y 4',refs:['os45'],pasos:[
+  st('Antes de dividirse, la célula duplica su DNA en la fase S.','F',['a:eu'],['eu','het'],{pulse:['eu','het']}),
+  st('Los centríolos organizan los dos polos del huso.','F',['cent'],['cent','mt'],{pulse:['cent']}),
+  st('Los microtúbulos forman el huso mitótico.','F',['mtpath'],['mt','cent'],{pulse:['mt']}),
+  st('El huso separa los cromosomas hacia cada polo.','F',['a:eu'],['mt','eu','het']),
+  st('Un anillo de actina y miosina estrangula la célula en dos (citocinesis).','F',['cent'],['act'],{pulse:['act']})]},
 };
-let anim=null;
+const PROC_ORDER=[['Temas 1 y 2',['secrecion','membrana','gen','copi']],['Tema 2',['motores','endocitosis','division']],['Tema 3',['m6p','autofagia','fagocitosis','peroxisoma']],['Tema 4',['atp','apoptosis']]];
+
+const tmpV=new THREE.Vector3();
 function worldPath(key){return celula.userData[key].map(p=>celula.localToWorld(new THREE.Vector3(...p)));}
-function startProc(id){
-  const pr=PROC[id]; const pts=worldPath(pr.path); const curve=new THREE.CatmullRomCurve3(pts,false,'centripetal');
-  const scale=cellSize/600; tracer.scale.setScalar(5*scale); kin.scale.setScalar(4.5*scale);
-  current=null; for(const n of meshes){const m=n.material,u=n.userData,on=pr.objetos.includes(u.org.id);
-    m.transparent=!on||u.baseTransparent;m.opacity=on?u.baseOpacity:0.06;m.depthWrite=on&&!u.baseTransparent;if(m.emissive)m.emissive.setRGB(0,0,0);m.needsUpdate=true;}
-  anim={id,curve,t0:performance.now(),dur:pr.dur*1000,n:pr.pasos.length,step:-1};
-  tracer.visible=id==='secrecion';kin.visible=id==='cinesina';
-  controls.target.copy(curve.getPoint(.5));
-  renderProcCard();
+function meshCenter(name){const m=meshByName.get(name);if(!m)return cellCenter.clone();m.geometry.computeBoundingSphere();return m.geometry.boundingSphere.center.clone().applyMatrix4(m.matrixWorld);}
+function nearestOn(name,p){const m=meshByName.get(name);const pos=m.geometry.attributes.position,v=new THREE.Vector3();let best=null,bd=1e18;const s=Math.max(1,pos.count/3000|0);for(let i=0;i<pos.count;i+=s){v.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);const d=v.distanceToSquared(p);if(d<bd){bd=d;best=v.clone();}}return best;}
+function P(spec){
+  if(spec==='mem') return worldPath('ruta_secrecion').at(-1);
+  if(spec==='cent') return celula.localToWorld(new THREE.Vector3(...celula.userData.centrosoma));
+  const [k,v]=spec.split(/:(.*)/s);
+  if(k==='a') return anchors.get(v).a.clone();
+  if(k==='c') return anchors.get(v).c.clone();
+  if(k==='r') return worldPath('ruta_secrecion').at(+v);
+  if(k==='mt'){const pts=worldPath('microtubulo_cinesina');return new THREE.CatmullRomCurve3(pts).getPointAt(+v);}
+  if(k==='mesh') return meshCenter(v);
+  if(k==='nm'){const [name,sp]=v.split('@');return nearestOn(name,P(sp));}
+  return cellCenter.clone();
 }
-function stopProc(){anim=null;tracer.visible=false;kin.visible=false;applyHighlight();}
+function pathOf(specs){let out=[];for(const s of specs){if(s==='mtpath')out=out.concat(worldPath('microtubulo_cinesina'));else if(s==='mtpath-r')out=out.concat(worldPath('microtubulo_cinesina').reverse());else out.push(P(s));}return out;}
+function curveOf(pts){return pts.length>1?new THREE.CatmullRomCurve3(pts,false,'centripetal'):null;}
+
+let anim=null; const STEP_MS=3400;
+const fxTouched=new Set();
+function fxReset(){for(const m of fxTouched){m.scale.setScalar(1);m.position.copy(m.userData.home);}fxTouched.clear();if(explode!==0)setExplode(+$('s-exp').value/100);}
+function fxApply(fx,u){ if(!fx) return;
+  const [k,v]=fx.split(/:(.*)/s);
+  if(k==='shrink'){const m=meshByName.get(v);if(!m)return;m.geometry.computeBoundingSphere();const c=m.geometry.boundingSphere.center,s=1-0.92*u;m.scale.setScalar(s);m.position.copy(m.userData.home).addScaledVector(c,1-s);fxTouched.add(m);}
+  if(k==='approach'){const [a,b]=v.split('>');const A=meshByName.get(a),B=meshByName.get(b);if(!A||!B)return;A.geometry.computeBoundingSphere();B.geometry.computeBoundingSphere();const d=B.geometry.boundingSphere.center.clone().sub(A.geometry.boundingSphere.center);A.position.copy(A.userData.home).addScaledVector(d,0.45*u);fxTouched.add(A);}
+  if(k==='explode'){setExplode(0.35*u);}
+}
+function procHighlight(step){
+  const set=step.focus?new Set(step.focus):null;
+  for(const n of meshes){const m=n.material,u=n.userData,on=!set||set.has(u.org.id);
+    m.transparent=!on||u.baseTransparent;m.opacity=on?u.baseOpacity:(['act','fi','mt','cit'].includes(u.org.id)?0.02:0.06);m.depthWrite=on&&!u.baseTransparent;if(m.emissive)m.emissive.setRGB(0,0,0);m.needsUpdate=true;}
+}
+function startProc(id){
+  current=null; const pr=PROCS[id];
+  const scale=cellSize/600; tracer.scale.setScalar(5*scale); tracer2.scale.setScalar(4*scale); kin.scale.setScalar(4.5*scale); dyn.scale.setScalar(4.5*scale);
+  const steps=pr.pasos.map(s=>({...s,pts:pathOf(s.go),pts2:s.go2?pathOf(s.go2):null}));
+  const all=steps.flatMap(s=>s.pts); const c=new THREE.Vector3();all.forEach(p=>c.add(p));c.divideScalar(all.length);
+  anim={id,steps,i:-1,t0:0,paused:false,pausedAt:0,done:false,target:c};
+  goStep(0); renderProcCard();
+}
+function goStep(i){ if(!anim) return; i=Math.max(0,Math.min(anim.steps.length-1,i));
+  anim.i=i; anim.t0=performance.now(); anim.done=false; anim.paused=false;
+  const s=anim.steps[i]; anim.curve=curveOf(s.pts); anim.curve2=s.pts2?curveOf(s.pts2):null;
+  fxReset(); anim.steps.slice(0,i).forEach(p=>fxApply(p.fx,1));
+  procHighlight(s); anim.pulse=new Set(s.pulse||[]);
+  tracer.visible=!s.kin&&!s.dyn; kin.visible=!!s.kin; dyn.visible=!!s.dyn; tracer2.visible=false;
+  document.querySelectorAll('.steps li').forEach((li,k)=>li.classList.toggle('on',k===i));
+  const pb=$('p-pause'); if(pb) pb.textContent='Pausa';
+}
+function stopProc(){ if(!anim) return; fxReset(); anim=null; tracer.visible=tracer2.visible=kin.visible=dyn.visible=false; pulseOff(); applyHighlight(); }
+function pulseOff(){for(const n of meshes){if(n.material.emissive&&n.userData.pulsing){n.material.emissive.setRGB(0,0,0);n.userData.pulsing=false;}}}
+function placeMotor(g,curve,u,now,phase){const p=curve.getPointAt(u),tan=curve.getTangentAt(u);g.position.copy(p);g.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tan);const ph=((now+phase)/260)%2<1;g.children[0].position.set(ph?1.6:-0.4,0,0);g.children[1].position.set(ph?-0.4:1.6,0,0);}
 function tickProc(now){ if(!anim) return;
-  let t=Math.min(1,Math.max(0,(now-anim.t0)/anim.dur));
-  const p=anim.curve.getPointAt(t);
-  if(anim.id==='secrecion'){tracer.position.copy(p);}
-  else{const tan=anim.curve.getTangentAt(t);kin.position.copy(p);kin.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tan);
-    const ph=(now/260)%2<1; kin.children[0].position.set(ph?1.6:-0.4,0,0);kin.children[1].position.set(ph?-0.4:1.6,0,0);}
-  const s=Math.min(anim.n-1,Math.floor(t*anim.n)); if(s!==anim.step){anim.step=s;document.querySelectorAll('.steps li').forEach((li,i)=>li.classList.toggle('on',i===s));}
-  if(t>=1&&!anim.done){anim.done=true;const b=$('p-again');if(b)b.hidden=false;}
+  controls.target.lerp(anim.target,0.04);
+  const s=anim.steps[anim.i]; const el=anim.paused?anim.pausedAt:now-anim.t0; const u=Math.min(1,el/STEP_MS);
+  const sm=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;
+  if(s.kin&&anim.curve) placeMotor(kin,anim.curve,sm,now,0);
+  else if(anim.curve) tracer.position.copy(anim.curve.getPointAt(sm));
+  else tracer.position.copy(s.pts[0]);
+  if(s.dyn){const c2=anim.curve2||anim.curve; if(c2) placeMotor(dyn,anim.curve2?c2:c2,anim.curve2?sm:1-sm,now,130);}
+  if(!s.kin){const k=1+0.25*Math.sin(now/180);tracer.scale.setScalar(5*cellSize/600*k);}
+  fxApply(s.fx,sm);
+  const glow=0.18+0.18*Math.sin(now/170);
+  for(const id of anim.pulse)(byOrg.get(id)||[]).forEach(n=>{if(n.material.emissive){n.material.emissive.setRGB(glow,glow,glow*0.6);n.userData.pulsing=true;}});
+  if(!anim.paused&&u>=1){ if(anim.i<anim.steps.length-1) goStep(anim.i+1); else if(!anim.done){anim.done=true;const b=$('p-pause');if(b)b.textContent='Repetir';} }
 }
 function renderProcCard(){
-  const a=anim?PROC[anim.id]:null;
-  card.innerHTML=`<div class="eyebrow">Procesos animados</div><h1>${a?a.titulo:'Elige un proceso'}</h1>
-   <div class="row"><button class="btn ${anim&&anim.id==='secrecion'?'primary':''}" data-p="secrecion">Ruta de secreción</button><button class="btn ${anim&&anim.id==='cinesina'?'primary':''}" data-p="cinesina">Cinesina en microtúbulo</button>${anim?'<button class="btn" id="p-stop">Detener</button>':''}</div>
-   ${a?`<p class="node">${a.tema}</p><ol class="steps">${a.pasos.map(s=>`<li>${s.replace(/\[(F|C|F\/C)\]/,(m,x)=>`<span class="src ${x==='C'?'c':'f'}">${x}</span>`)}</li>`).join('')}</ol><div class="row"><button class="btn" id="p-again" hidden>Repetir</button></div>`
-     :'<p>La esfera rosa sigue a una proteína desde el ribosoma hasta afuera de la célula. La cinesina muestra cómo un motor camina sobre un microtúbulo con su carga.</p>'}`;
+  const a=anim?PROCS[anim.id]:null;
+  const chips=PROC_ORDER.map(([t,ids])=>`<div class="group"><h2>${t}</h2><div class="chips">${ids.map(id=>`<button class="chip" data-p="${id}" aria-pressed="${!!(anim&&anim.id===id)}">${PROCS[id].titulo}</button>`).join('')}</div></div>`).join('');
+  const srcs=a&&a.refs.length?`<h3>Fuentes de los puntos C</h3><ol class="refs">${a.refs.map(k=>`<li><a href="${REFS[k][1]}" target="_blank" rel="noopener">${REFS[k][0]}</a></li>`).join('')}</ol>`:'';
+  card.innerHTML=`<div class="eyebrow">Procesos animados · ${Object.keys(PROCS).length} disponibles</div><h1>${a?a.titulo:'Elige un proceso'}</h1>
+   ${a?`<p class="node">${a.tema}</p>
+   <div class="row"><button class="btn" id="p-prev">◀ Anterior</button><button class="btn primary" id="p-pause">Pausa</button><button class="btn" id="p-next">Siguiente ▶</button><button class="btn" id="p-stop">Cerrar</button></div>
+   <ol class="steps">${a.pasos.map((s,k)=>`<li data-k="${k}" class="${k===anim.i?'on':''}">${s.t} <span class="src ${s.s==='C'?'c':'f'}">${s.s}</span></li>`).join('')}</ol>${srcs}`
+   :`<p>Cada proceso avanza paso a paso: la esfera rosa sigue a la molécula, el organelo activo brilla y el resto se atenúa. Puedes pausar o saltar entre pasos.</p>${chips}`}`;
   card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>startProc(b.dataset.p));
-  const st=$('p-stop');if(st)st.onclick=()=>{stopProc();renderProcCard();};
-  const ag=$('p-again');if(ag)ag.onclick=()=>startProc(anim.id);
+  card.querySelectorAll('.steps li').forEach(li=>{li.style.cursor='pointer';li.onclick=()=>goStep(+li.dataset.k);});
+  const g=id=>$(id);
+  if(g('p-stop')) g('p-stop').onclick=()=>{stopProc();renderProcCard();};
+  if(g('p-prev')) g('p-prev').onclick=()=>goStep(anim.i-1);
+  if(g('p-next')) g('p-next').onclick=()=>goStep(anim.i+1);
+  if(g('p-pause')) g('p-pause').onclick=()=>{ if(anim.done){goStep(0);return;} anim.paused=!anim.paused; if(anim.paused){anim.pausedAt=performance.now()-anim.t0;g('p-pause').textContent='Reanudar';} else {anim.t0=performance.now()-anim.pausedAt;g('p-pause').textContent='Pausa';} };
 }
 
-// ---------- quiz
-const quiz={active:false,target:null,n:0,ok:0,last:null,total:10};
-function nextQ(){quiz.n++; if(quiz.n>quiz.total){quiz.active=false;renderQuiz();applyHighlight();return;}
-  let o;do{o=QUIZ[Math.floor(Math.random()*QUIZ.length)];}while(quiz.target&&o.id===quiz.target.id);quiz.target=o;renderQuiz();}
-function answer(o){ if(!quiz.active) return; const good=o.id===quiz.target.id; if(good)quiz.ok++;
-  quiz.last={good,picked:o,want:quiz.target}; nextQ(); }
-function renderQuiz(){
-  if(!quiz.active&&quiz.n===0){card.innerHTML=`<div class="eyebrow">Modo examen</div><h1>¿Dónde está?</h1><p>Te pido un organelo y tú lo tocas en el modelo. Son ${quiz.total} preguntas; las etiquetas y la lista se ocultan.</p><div class="row"><button class="btn primary" id="q-go">Empezar</button></div>`;$('q-go').onclick=startQuiz;return;}
-  if(!quiz.active){card.innerHTML=`<div class="eyebrow">Resultado</div><h1>${quiz.ok} de ${quiz.total}</h1>${fb()}<div class="row"><button class="btn primary" id="q-go">Otra ronda</button></div>`;$('q-go').onclick=startQuiz;return;}
-  card.innerHTML=`<div class="eyebrow">Pregunta ${quiz.n} de ${quiz.total} · aciertos ${quiz.ok}</div><h1>Toca: ${quiz.target.nombre}</h1><p class="node">Tema ${quiz.target.tema}</p>${fb()}<div class="row"><button class="btn" id="q-skip">No sé, siguiente</button><button class="btn" id="q-end">Terminar</button></div>`;
-  $('q-skip').onclick=()=>{quiz.last={good:false,picked:null,want:quiz.target};nextQ();};
-  $('q-end').onclick=()=>{quiz.active=false;quiz.n=0;renderQuiz();updateLabels();};
+// ---------- quiz (7 modos)
+const FUNC={
+ rer:['pliega y revisa las proteínas que se van a secretar','tiene ribosomas pegados en su superficie'],
+ rel:['fabrica lípidos y hormonas esteroideas','desintoxica fármacos con el citocromo P450'],
+ ribo:['arma proteínas leyendo el ARN mensajero, sin tener membrana'],
+ golgi:['recibe por la cara cis y despacha por la cara trans','marca las enzimas lisosomales con manosa-6-fosfato'],
+ copii:['lleva proteínas del RE al Golgi'], copi:['regresa proteínas del Golgi al RE'],
+ clat:['tiene una jaula geodésica y participa en la endocitosis'],
+ ves:['lleva productos a la membrana para la exocitosis'],
+ mt:['forma vías huecas de 25 nm por donde caminan cinesinas y dineínas','forma el huso mitótico'],
+ act:['forma filamentos de 7 nm en la corteza bajo la membrana'],
+ fi:['da resistencia mecánica con fibras de 8–10 nm como la queratina'],
+ cent:['es un par de cilindros de 9 tripletes que organiza los microtúbulos'],
+ aut:['envuelve un organelo viejo con doble membrana para reciclarlo'],
+ fag:['encierra una bacteria que la célula se tragó'],
+ lis:['digiere con hidrolasas a pH cercano a 5'],
+ perox:['destruye el agua oxigenada con catalasa','acorta ácidos grasos de cadena muy larga'],
+ env:['controla qué entra y sale del núcleo con sus poros'],
+ lam:['refuerza el núcleo por dentro con una malla de láminas'],
+ het:['es cromatina condensada que casi no se transcribe'],
+ eu:['es cromatina laxa donde se transcriben los genes activos'],
+ nucleolo:['es donde se arman los ribosomas'],
+ mmem:['contiene las ATP sintasas que forman ATP'],
+ mcr:['aumenta la superficie de la membrana interna de la mitocondria'],
+ mmat:['es donde ocurre el ciclo de Krebs y está el DNA circular'],
+ mito:['produce ATP y puede iniciar la apoptosis'],
+ vac:['almacena agua y otras sustancias'],
+};
+const CASOS=[
+ ['Un bebé con Tay-Sachs acumula gangliósido GM2 en sus neuronas porque le falta una enzima digestiva. ¿Qué organelo falla?','lis','Falta la β-hexosaminidasa A del lisosoma.'],
+ ['En el síndrome de Zellweger las proteínas no pueden entrar al organelo que destruye el agua oxigenada. ¿Cuál es?','perox','Fallan los genes PEX y el peroxisoma queda vacío.'],
+ ['En la fibrosis quística, la CFTR F508del se pliega mal y se destruye antes de salir. ¿Dónde se detecta el error de plegamiento?','rer','El control de calidad del RE rugoso la manda al proteasoma.'],
+ ['Un niño con progeria tiene una lámina A anómala. ¿Qué estructura falla?','lam','La lámina nuclear vuelve inestable la envoltura.'],
+ ['En la enfermedad de células I, las enzimas no reciben la marca de manosa-6-fosfato. ¿Qué organelo debía ponerla?','golgi','El Golgi pone la marca que dirige las enzimas al lisosoma.'],
+ ['Un paciente con MELAS tiene una mutación en un DNA circular que no está en el núcleo. ¿Dónde está ese DNA?','mmat','El DNA mitocondrial está en la matriz.'],
+ ['El paclitaxel congela unas fibras y la célula cancerosa no puede dividirse. ¿Cuáles?','mt','Los taxanos estabilizan los microtúbulos del huso.'],
+ ['En la hipercolesterolemia familiar el LDL no entra a la célula. ¿Qué vesícula lo mete normalmente?','clat','El LDL entra por endocitosis con clatrina.'],
+ ['Las células del hígado de una persona que toma muchos fármacos aumentan un organelo que los desintoxica. ¿Cuál?','rel','El RE liso desintoxica con el citocromo P450.'],
+ ['Un macrófago se traga una bacteria. ¿Dónde queda encerrada?','fag','Queda en un fagosoma, que luego se fusiona con un lisosoma.'],
+ ['En la epidermólisis ampollosa simple la piel se rompe con roces mínimos por fallas en la queratina. ¿Qué componente falla?','fi','La queratina forma filamentos intermedios.'],
+ ['Una célula que necesita fabricar muchos ribosomas agranda una zona del núcleo sin membrana. ¿Cuál?','nucleolo','En el nucléolo se arman los ribosomas.'],
+];
+const VF=[
+ ['El lisosoma trabaja a pH neutro.',false,'lis','Trabaja a pH cercano a 5.'],
+ ['El RE liso tiene ribosomas pegados.',false,'rel','Los ribosomas están en el RE rugoso.'],
+ ['Las vesículas COPII van del RE al Golgi.',true,'copii','COPII es el transporte de ida.'],
+ ['La mitocondria tiene su propio DNA circular.',true,'mmat','Está en la matriz.'],
+ ['La cinesina camina hacia el centrosoma.',false,'mt','Va hacia el extremo +, la periferia; la dineína va al centrosoma.'],
+ ['El nucléolo tiene membrana propia.',false,'nucleolo','Es una zona del núcleo sin membrana.'],
+ ['La catalasa del peroxisoma destruye el agua oxigenada.',true,'perox','La convierte en agua y oxígeno.'],
+ ['Los microfilamentos de actina son los más gruesos del citoesqueleto.',false,'act','Son los más delgados, unos 7 nm.'],
+ ['La heterocromatina se transcribe mucho.',false,'het','Está condensada y casi no se transcribe.'],
+ ['Las crestas aumentan la superficie de la membrana interna.',true,'mcr','Más superficie para producir ATP.'],
+ ['La cara trans del Golgi recibe el material del RE.',false,'golgi','Lo recibe la cara cis; la trans despacha.'],
+ ['La membrana externa del núcleo es continua con el RE.',true,'env','El espacio perinuclear se conecta con el lumen del RE.'],
+ ['El autofagosoma tiene una sola membrana.',false,'aut','Tiene doble membrana.'],
+ ['Los centríolos tienen 9 tripletes de microtúbulos.',true,'cent','Por eso se ven como barriles de 9 haces.'],
+ ['Las vesículas COPI regresan proteínas al RE.',true,'copi','Recuperan las proteínas con señal KDEL.'],
+ ['Los ribosomas libres tienen membrana.',false,'ribo','Ningún ribosoma tiene membrana.'],
+];
+const SEQS=[
+ {nombre:'Proteína de secreción',ids:['eu','env','rer','copii','golgi','ves'],txt:['Se transcribe el gen','Sale el ARNm por un poro','Se fabrica y pliega en el RE rugoso','Viaja en vesícula COPII','Se procesa en el Golgi','Sale en vesícula secretora']},
+ {nombre:'Enzima del lisosoma',ids:['rer','copii','golgi','clat','lis'],txt:['Se fabrica en el RE rugoso','Viaja en vesícula COPII','Recibe la marca manosa-6-fosfato en el Golgi','Viaja en vesícula de clatrina','Llega al lisosoma']},
+ {nombre:'Energía en la mitocondria',ids:['mmat','mcr','mmem'],txt:['Ciclo de Krebs en la matriz','Cadena respiratoria en las crestas','ATP sintasa en la membrana interna']},
+];
+const MODES={
+ nombre:{t:'Por nombre',d:'Te digo el organelo y lo tocas en el modelo.'},
+ funcion:{t:'Por función',d:'Te digo qué hace y tú encuentras cuál es.'},
+ opciones:{t:'Opción múltiple',d:'Se ilumina un organelo y eliges su nombre.'},
+ orden:{t:'Ordenar el recorrido',d:'Tocas los organelos en el orden en que pasa una molécula.'},
+ caso:{t:'Caso clínico',d:'Lees un caso y tocas el organelo afectado.'},
+ vf:{t:'Verdadero o falso',d:'Juzgas una afirmación sobre el organelo iluminado.'},
+ reloj:{t:'Contrarreloj',d:'60 segundos para ubicar la mayor cantidad de organelos.'},
+};
+const quiz={active:false,mode:'nombre',tema:'all',items:[],i:0,ok:0,last:null,errors:[],focus:null,deadline:0,seq:null,record:0};
+try{quiz.record=+localStorage.getItem('celula-record')||0;}catch(e){}
+const byId=id=>ORG.find(o=>o.id===id);
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;};
+const inTema=id=>{if(quiz.tema==='all')return true;const o=byId(id);return o&&o.tema.startsWith(quiz.tema);};
+function pool(){return QUIZ.filter(o=>anchors.has(o.id)&&inTema(o.id));}
+function makeItems(mode){
+  if(mode==='nombre'||mode==='reloj') return shuffle(pool()).slice(0,mode==='reloj'?999:10).map(o=>({kind:'tap',prompt:'Toca: '+o.nombre,ans:o.id,sub:'Tema '+o.tema}));
+  if(mode==='funcion') return shuffle(Object.entries(FUNC).filter(([id])=>anchors.has(id)&&inTema(id)).map(([id,cl])=>({kind:'tap',prompt:'Toca el organelo que '+cl[Math.random()*cl.length|0]+'.',ans:id}))).slice(0,10);
+  if(mode==='opciones') return shuffle(pool()).slice(0,10).map(o=>{const ds=shuffle(QUIZ.filter(x=>x.id!==o.id)).slice(0,3);return {kind:'choice',prompt:'¿Qué organelo está iluminado?',focus:o.id,options:shuffle([o,...ds]).map(x=>({label:x.nombre,val:x.id})),ans:o.id};});
+  if(mode==='caso') return shuffle(CASOS.filter(c=>inTema(c[1]))).map(([p,a,w])=>({kind:'tap',prompt:p,ans:a,why:w,sub:'Caso clínico'}));
+  if(mode==='vf') return shuffle(VF.filter(v=>inTema(v[2]))).slice(0,10).map(([p,v,o,w])=>({kind:'choice',prompt:p,focus:o,options:[{label:'Verdadero',val:true},{label:'Falso',val:false}],ans:v,why:w}));
+  if(mode==='orden'){const s=SEQS[Math.random()*SEQS.length|0];return s.ids.map((id,k)=>({kind:'seq',prompt:`${s.nombre}: paso ${k+1} de ${s.ids.length}`,hint:s.txt[k],ans:id,sub:'Toca el siguiente organelo del recorrido'}));}
+  return [];
 }
-function fb(){const l=quiz.last;if(!l)return'';return l.good?`<p class="ok">Correcto: ${l.want.nombre}.</p>`:`<p class="no">${l.picked?`Eso era ${l.picked.nombre}; `:''}buscabas ${l.want.nombre}.</p>`;}
-function startQuiz(){quiz.active=true;quiz.n=0;quiz.ok=0;quiz.last=null;quiz.target=null;current=null;applyHighlight();updateLabels();nextQ();}
+function startQuiz(mode,items){
+  stopProc(); current=null; quiz.mode=mode; quiz.items=items||makeItems(mode); quiz.i=0; quiz.ok=0; quiz.last=null; quiz.errors=[]; quiz.active=quiz.items.length>0;
+  if(!quiz.active){card.innerHTML+='<p class="no">No hay preguntas de ese tema en este modo. Elige otro tema.</p>';return;}
+  if(mode==='reloj') quiz.deadline=performance.now()+60000;
+  showItem();
+}
+function curItem(){return quiz.items[quiz.i];}
+function showItem(){const it=curItem(); quiz.focus=it&&it.focus?byId(it.focus):null; applyHighlight(); updateLabels(); renderQuiz();}
+function finishQuiz(){quiz.active=false;quiz.focus=null;
+  if(quiz.mode==='reloj'&&quiz.ok>quiz.record){quiz.record=quiz.ok;quiz.newRecord=true;try{localStorage.setItem('celula-record',quiz.ok);}catch(e){}} else quiz.newRecord=false;
+  applyHighlight(); updateLabels(); renderQuiz();}
+function advance(good,picked){const it=curItem(); if(good)quiz.ok++; else quiz.errors.push(it);
+  quiz.last={good,picked,it}; quiz.i++;
+  if(quiz.mode!=='reloj'&&quiz.i>=quiz.items.length) return finishQuiz();
+  if(quiz.mode==='reloj'&&quiz.i>=quiz.items.length){quiz.items=quiz.items.concat(makeItems('reloj'));}
+  showItem();}
+function answer(o){ if(!quiz.active) return; const it=curItem(); if(!it||it.kind==='choice') return;
+  if(it.kind==='seq'){ if(o.id===it.ans){ advance(!it.miss,o); } else { it.miss=true; quiz.last={good:false,picked:o,it,seqWrong:true}; renderQuiz(); } return; }
+  advance(o.id===it.ans,o);}
+function choose(val){const it=curItem(); if(!it||it.kind!=='choice') return; advance(val===it.ans,typeof val==='string'?byId(val):null);}
+function fbHTML(){const l=quiz.last;if(!l)return'';const it=l.it,w=it.why?` ${it.why}`:'';
+  if(l.seqWrong) return `<p class="no">${l.picked.nombre} no es el siguiente paso. Pista: ${it.hint}.</p>`;
+  if(it.kind==='choice'&&typeof it.ans==='boolean') return `<p class="${l.good?'ok':'no'}">${l.good?'Correcto':'Incorrecto'}: era ${it.ans?'verdadero':'falso'}.${w}</p>`;
+  const ansName=byId(it.ans)?byId(it.ans).nombre:'';
+  return l.good?`<p class="ok">Correcto: ${ansName}.${w}</p>`:`<p class="no">${l.picked?`Eso era ${l.picked.nombre}; `:''}la respuesta era ${ansName}.${w}</p>`;}
+function renderQuiz(){
+  if(!quiz.active&&!quiz.items.length){
+    card.innerHTML=`<div class="eyebrow">Modo examen</div><h1>Elige un tipo de examen</h1>
+     <div class="chips qmodes">${Object.entries(MODES).map(([k,m])=>`<button class="chip" data-m="${k}" aria-pressed="${quiz.mode===k}">${m.t}</button>`).join('')}</div>
+     <p id="q-desc">${MODES[quiz.mode].d}</p>
+     <label class="node">Tema: <select id="q-tema"><option value="all">Todos</option><option value="1">1 · RE</option><option value="2">2 · Golgi y citoesqueleto</option><option value="3">3 · Lisosomas y peroxisomas</option><option value="4">4 · Núcleo y mitocondria</option></select></label>
+     ${quiz.record?`<p class="node">Récord en contrarreloj: ${quiz.record}</p>`:''}
+     <div class="row"><button class="btn primary" id="q-go">Empezar</button></div>`;
+    $('q-tema').value=quiz.tema; $('q-tema').onchange=e=>quiz.tema=e.target.value;
+    card.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{quiz.mode=b.dataset.m;renderQuiz();});
+    $('q-go').onclick=()=>startQuiz(quiz.mode); return;}
+  if(!quiz.active){const total=quiz.i;
+    card.innerHTML=`<div class="eyebrow">Resultado · ${MODES[quiz.mode].t}</div><h1>${quiz.ok} de ${total}</h1>${quiz.newRecord?'<p class="ok">¡Nuevo récord!</p>':''}${fbHTML()}
+     <div class="row">${quiz.errors.length&&quiz.mode!=='orden'?`<button class="btn primary" id="q-rev">Repasar errores (${quiz.errors.length})</button>`:''}<button class="btn" id="q-again">Otra ronda</button><button class="btn" id="q-menu">Cambiar examen</button></div>`;
+    if($('q-rev')) $('q-rev').onclick=()=>{const e=quiz.errors.map(x=>({...x,miss:false}));startQuiz(quiz.mode==='reloj'?'nombre':quiz.mode,e);};
+    $('q-again').onclick=()=>startQuiz(quiz.mode); $('q-menu').onclick=()=>{quiz.items=[];renderQuiz();}; return;}
+  const it=curItem(); const total=quiz.mode==='reloj'?'∞':quiz.items.length;
+  const head=quiz.mode==='reloj'?`<span id="q-timer">60 s</span> · aciertos ${quiz.ok}`:`Pregunta ${quiz.i+1} de ${total} · aciertos ${quiz.ok}`;
+  card.innerHTML=`<div class="eyebrow">${MODES[quiz.mode].t} · ${head}</div><h1 class="qh">${it.prompt}</h1>${it.sub?`<p class="node">${it.sub}</p>`:''}
+   ${it.kind==='choice'?`<div class="chips">${it.options.map((o,k)=>`<button class="chip" data-c="${k}">${o.label}</button>`).join('')}</div>`:''}
+   ${fbHTML()}
+   <div class="row">${it.kind==='seq'?`<button class="btn" id="q-hint">Pista</button>`:''}<button class="btn" id="q-skip">No sé, siguiente</button><button class="btn" id="q-end">Terminar</button></div>`;
+  card.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>choose(it.options[+b.dataset.c].val));
+  if($('q-hint')) $('q-hint').onclick=()=>{quiz.last={good:false,picked:{nombre:'Ese'},it,seqWrong:true};renderQuiz();};
+  $('q-skip').onclick=()=>advance(false,null);
+  $('q-end').onclick=()=>finishQuiz();
+}
+function tickQuiz(now){ if(quiz.active&&quiz.focus&&anchors.has(quiz.focus.id)){controls.target.lerp(anchors.get(quiz.focus.id).c,0.06);const g=0.2+0.2*Math.sin(now/160);(byOrg.get(quiz.focus.id)||[]).forEach(n=>{if(n.material.emissive)n.material.emissive.setRGB(g,g,g*0.5);});}
+  if(!quiz.active||quiz.mode!=='reloj') return; const left=Math.max(0,quiz.deadline-now); const t=$('q-timer'); if(t) t.textContent=Math.ceil(left/1000)+' s'; if(left<=0) finishQuiz(); }
 
 // ---------- tabs
 function setMode(m){mode=m;['explorar','procesos','examen'].forEach(x=>$('tab-'+x).setAttribute('aria-selected',x===m));
-  if(m!=='procesos'&&anim) stopProc(); if(m!=='examen'&&quiz.active){quiz.active=false;quiz.n=0;}
+  if(m!=='procesos'&&anim) stopProc(); if(m!=='examen'){quiz.active=false;quiz.focus=null;quiz.items=[];}
   if(m==='explorar'){card.innerHTML=orgCard(current);applyHighlight();}
   if(m==='procesos'){renderProcCard();}
-  if(m==='examen'){current=null;renderQuiz();applyHighlight();}
+  if(m==='examen'){current=null;quiz.items=[];renderQuiz();applyHighlight();}
   renderList();updateLabels();}
 ['explorar','procesos','examen'].forEach(x=>$('tab-'+x).onclick=()=>setMode(x));
 
 card.innerHTML=orgCard(null);renderList();
 let lastL=0;
-function render(){renderer.setAnimationLoop(()=>{const now=performance.now();controls.update();try{tickProc(now);}catch(e){console.error(e);stopProc();}renderer.render(scene,camera);if(now-lastL>60){lastL=now;updateLabels();}});}
+function render(){renderer.setAnimationLoop(()=>{const now=performance.now();controls.update();try{tickProc(now);}catch(e){console.error(e);stopProc();}tickQuiz(now);renderer.render(scene,camera);if(now-lastL>60){lastL=now;updateLabels();}});}
 </script>
 
 </body>
